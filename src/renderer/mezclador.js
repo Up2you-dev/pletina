@@ -40,17 +40,22 @@ function avisar() {
 export function fichaDeMezcla(id) {
   const track = getTrack(id);
   if (!track) return null;
+  const rejilla = track.rejilla ?? null;
   return {
     id,
     titulo: track.title,
     artista: track.artist,
     coverId: track.coverId,
     duracion: track.duration || 0,
-    bpm: track.bpm || 0,
+    // El tempo que manda es el de la rejilla: el del detector es un punto de
+    // partida y el de la rejilla es el que hace que los golpes caigan en su
+    // sitio del primer minuto al último.
+    bpm: rejilla?.bpm || track.bpm || 0,
     key: track.key || '',
     tonalidad: track.tonalidad || '',
-    rejilla: track.rejilla ?? null,
-    analizada: Boolean(track.bpm && track.rejilla),
+    rejilla,
+    conFrase: (rejilla?.fuerzaFrase ?? 0) > 0,
+    analizada: Boolean((rejilla?.bpm || track.bpm) && rejilla),
   };
 }
 
@@ -91,6 +96,10 @@ export function prepararPlan(idEntrante = siguienteEnLaCola()) {
       duracion: entrante.duracion,
       rejilla: entrante.rejilla ?? { bpm: entrante.bpm, offset: 0, tiempoFuerte: 0, tiemposPorCompas: 4 },
     },
+    // Por dónde entra la que entra: casi ningún archivo empieza a sonar en el
+    // segundo cero, y meter el silencio del principio en la mezcla es de las
+    // cosas que más cantan.
+    entradaEntrante: entrante.rejilla?.entrada ?? 0,
     compases: ajustes.compases,
     estilo: ajustes.estilo,
     ajustarTempo: ajustes.ajustarTempo,
@@ -144,11 +153,17 @@ export function mezclarAhora(idEntrante = siguienteEnLaCola()) {
 
   enCurso = { ...preparado, desde: Date.now() };
   avisar();
-  setTimeout(() => {
-    enCurso = null;
-    avisar();
-  }, (preparado.espera + preparado.plan.duracion + 0.4) * 1000);
+  // Red de seguridad: si por lo que sea no llega el aviso de fin del
+  // reproductor, la pantalla no se queda mezclando para siempre.
+  setTimeout(terminarMezcla, (preparado.espera + preparado.plan.duracion + 0.6) * 1000);
   return { ok: true, ...preparado };
+}
+
+/** El reproductor avisa de que la transición ha terminado (o se ha cortado). */
+export function terminarMezcla() {
+  if (!enCurso) return;
+  enCurso = null;
+  avisar();
 }
 
 export function estadoDeMezcla() {
@@ -173,7 +188,8 @@ export function margenAutomatico() {
   if (!state.mezclador.auto) return 0;
   const preparado = prepararPlan();
   if (!preparado) return 0;
-  // Hay que lanzarla con tiempo para la espera hasta el compás y para la
-  // transición entera; si no, la saliente se acaba a media mezcla.
-  return preparado.espera + preparado.plan.duracion + 0.5;
+  // Con la duración PLENA, no con la recortada: usando la recortada, cada
+  // repaso adelantaba un poco menos el aviso y la mezcla automática acababa
+  // durando un compás.
+  return preparado.espera + (preparado.plan.duracionPlena ?? preparado.plan.duracion) + 0.5;
 }

@@ -524,3 +524,59 @@ describe('carátulas', () => {
     expect(library.listTracks()).toHaveLength(2);
   });
 });
+
+describe('análisis y rejilla', () => {
+  beforeEach(async () => {
+    await song('a.mp3');
+    await library.addFolders([musica]);
+  });
+
+  const rejilla = {
+    bpm: 127.312,
+    offset: 0.437,
+    tiempoFuerte: 2,
+    fuerza: 0.62,
+    fuerzaCompas: 0.31,
+    compasFuerte: 1,
+    fuerzaFrase: 0.28,
+    compasesPorFrase: 4,
+    tiemposPorCompas: 4,
+    porBombo: true,
+    entrada: 3.9,
+  };
+
+  it('guarda la rejilla entera, no solo el tempo', () => {
+    const id = library.listTracks()[0].id;
+    library.setAnalysis(id, { bpm: 127.312, key: 'Am', tonalidad: 'La menor', rejilla });
+    expect(library.listTracks()[0].rejilla).toMatchObject(rejilla);
+  });
+
+  it('el tempo no se redondea a décimas', () => {
+    // Una décima de más son cuarenta milisegundos de desfase al final de una
+    // canción: es la diferencia entre cuadrar y no cuadrar.
+    const id = library.listTracks()[0].id;
+    library.setAnalysis(id, { bpm: 127.312, rejilla });
+    const track = library.listTracks()[0];
+    expect(track.bpm).toBeCloseTo(127.312, 3);
+    expect(track.rejilla.bpm).toBeCloseTo(127.312, 3);
+  });
+
+  it('sin rejilla no inventa una', () => {
+    const id = library.listTracks()[0].id;
+    library.setAnalysis(id, { bpm: 120 });
+    expect(library.listTracks()[0].rejilla).toBe(null);
+  });
+
+  it('con datos absurdos no guarda basura', () => {
+    const id = library.listTracks()[0].id;
+    library.setAnalysis(id, {
+      bpm: -4,
+      key: 12,
+      rejilla: { ...rejilla, offset: -3, compasesPorFrase: 999, tiemposPorCompas: 99, entrada: -1 },
+    });
+    const track = library.listTracks()[0];
+    expect(track.bpm).toBe(0);
+    expect(track.key).toBe('');
+    expect(track.rejilla).toMatchObject({ offset: 0, compasesPorFrase: 16, tiemposPorCompas: 8, entrada: 0 });
+  });
+});

@@ -4,6 +4,89 @@ Las versiones siguen [SemVer](https://semver.org/lang/es/). Cada una se
 construye desde la pestaña *Actions* del repositorio; una etiqueta `v1.2.3`
 además publica los instaladores sueltos en la página de versiones.
 
+## 3.1.0 — 2026-08-23
+
+La versión que hace que el mezclador **suene y se vea cuadrado**. La 3.0.0
+tenía la coreografía bien y la rejilla mal: sabía qué hacer, pero no sabía
+exactamente cuándo.
+
+### Cuadrar de verdad
+
+- **La rejilla ya no se estima, se ajusta.** Antes se cogía el tempo del
+  detector —con la resolución de su autocorrelación— y se buscaba la fase. Un
+  tempo con medio punto de error acumula un segundo de desfase en tres minutos:
+  la mezcla empezaba bien y terminaba hecha un desastre. Ahora se busca el par
+  (tempo, fase) que hace que **todos** los golpes de la canción caigan sobre la
+  rejilla. Sobre una caja de ritmos fabricada a 128,00, antes salía 128,7 y un
+  desfase de 70 ms; ahora salen 128,00 y 1 ms.
+- **La envolvente ya no adelanta los golpes.** Se medía la energía con una FFT
+  por marco, que además de costar diez veces más situaba cada golpe media
+  ventana antes de que ocurriera. Ahora es un filtro aplicado de ida y de
+  vuelta —fase cero— con marcos de 5,8 ms en vez de 23.
+- **Y el tempo se guarda con decimales.** La biblioteca lo redondeaba a una
+  décima al guardarlo, que es tirar por el desagüe justo la precisión que hace
+  falta: una décima a 128 son cuarenta milisegundos al final de una canción.
+- **Un empujón al entrar.** Colocar el plato en su sitio no basta: entre pedirle
+  una posición y que empiece a sonar se le van unos milisegundos. Ahora, medio
+  segundo después de arrancar, se mide el desfase real entre las dos rejillas y
+  se corrige acelerando un 2 % lo justo para recuperarlo, como quien empuja el
+  plato con el dedo. Medido en la prueba de extremo a extremo: **2 ms de
+  desfase mediano** durante toda la transición, donde antes había 24.
+
+### Como lo haría un pinchadiscos
+
+- **Se pincha en frase, no solo en compás.** El análisis busca qué compás abre
+  la frase —el que cambia de nivel— y, cuando las dos canciones la tienen clara
+  y la transición mide frases enteras, los unos de las dos coinciden en el
+  primer compás de la frase.
+- **La que entra empieza por donde suena, no por el segundo cero.** Casi ningún
+  archivo empieza a sonar en el cero: hay silencio o una entrada que se abre.
+  Meterlo en la mezcla es de las cosas que más cantan. Ahora se detecta por
+  dónde entra de verdad y se pincha desde ahí.
+- **El cambio de graves cae en un inicio de compás**, no a mitad de nada. Y si
+  la canción que sale se acaba antes, la transición se acorta **por compases
+  enteros**: más corta, pero cuadrada.
+- **Sitio para la voz.** La que entra lo hace con los graves fuera y también con
+  un pellizco en los medios, que es donde se pelean las voces; se le devuelven
+  en el mismo compás del cambio.
+
+### Analizar en lote
+
+- **Botón «Analizar» en la biblioteca**, con el número de canciones que le
+  faltan. Analiza lo seleccionado o todo lo que se esté viendo.
+- **Se salta lo que ya está hecho** y pregunta antes de rehacerlo: volver a
+  analizar mil canciones para arreglar dos es tiempo tirado.
+- **Con progreso y con botón de parar**: dice por qué canción va y se corta en
+  cuanto termine esa. Una canción rota se cuenta y se sigue, no tumba el lote.
+- **Desde el mezclador**, además: analizar las dos que van a sonar o la cola
+  entera de una vez.
+
+### Corregido
+
+- **Cortar una mezcla dejaba la canción sin graves para siempre.** A mitad de
+  transición el plato que entra tiene los graves quitados; al pasar de canción
+  o pausar, nadie se los devolvía. Es el error más gordo de la 3.0.0 y no había
+  manera de saber por qué sonaba mal.
+- **La pantalla se quedaba mezclando** después de darle a siguiente: el
+  reproductor avisaba de que la transición había terminado y nadie escuchaba
+  ese aviso.
+- **Pausar a mitad de mezcla** dejaba un plato parado y otro sonando. Ahora
+  pausar corta la transición y deja una sola canción, que es lo que se espera.
+- **La mezcla automática se quedaba en un compás.** El aviso de «se acerca el
+  final» se calculaba con la duración ya recortada por el final de la canción,
+  así que cada repaso la acortaba un poco más. Ahora se calcula con la duración
+  pedida.
+- **Un solo interruptor de tempo.** El bpm que se enseña abajo es el que suena.
+
+### Por dentro
+
+- 224 pruebas (`npm test`), 26 de ellas sobre la rejilla, con una que fabrica
+  cuatro minutos de música y comprueba que el último golpe sigue cayendo donde
+  debe.
+- `npm run test:mezcla` mide ahora también el análisis en lote, el desfase entre
+  las dos rejillas durante toda la transición y qué pasa al cortar una mezcla a
+  la mitad: 21 comprobaciones sobre la aplicación de verdad.
+
 ## 3.0.0 — 2026-08-23
 
 La versión del **mezclador**: deja de ser una casilla escondida en un panel y

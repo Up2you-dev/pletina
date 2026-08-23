@@ -25,10 +25,14 @@ function plato(ficha, papel) {
     </div>`;
   }
   const datos = [
-    ficha.bpm ? `${Math.round(ficha.bpm)} bpm` : 'sin tempo',
+    // Con decimal: entre 128,0 y 128,4 hay medio segundo de desfase al final de
+    // una canción, y es justo lo que hace que una mezcla no cuadre.
+    ficha.bpm ? `${ficha.bpm.toFixed(1).replace('.', ',')} bpm` : 'sin tempo',
     ficha.tonalidad || (ficha.key ? ficha.key : 'sin tonalidad'),
     ficha.rejilla?.porBombo ? 'rejilla por bombo' : ficha.rejilla ? 'rejilla por pulso' : 'sin rejilla',
-  ];
+    ficha.conFrase ? 'frase clara' : '',
+    ficha.rejilla?.entrada > 1 ? `entra en ${formatTime(ficha.rejilla.entrada)}` : '',
+  ].filter(Boolean);
   return `<div class="plato${ficha.analizada ? '' : ' sin-analizar'}">
     <div class="papel">${esc(papel)}</div>
     <div class="plato-cuerpo">
@@ -56,6 +60,7 @@ export function pintarMezclador() {
 
   const avisos = preparado?.plan?.avisos ?? [];
   const resumen = preparado?.resumen ?? '';
+  const porAnalizar = [saliente, entrante].filter((f) => f && !f.analizada);
 
   return `<div class="mezclador">
     <div class="platos">
@@ -68,12 +73,12 @@ export function pintarMezclador() {
     ${avisos.map((a) => `<p class="aviso-mezcla">${ICO.warn}<span>${esc(a)}</span></p>`).join('')}
 
     ${enCurso ? `<div class="mezcla-en-curso">
-      <div class="barra">
-        <span id="mezcla-progreso"></span>
-        ${enCurso.plan.cambioDeGraves
-    ? `<i class="marca-cambio" style="left:${(enCurso.plan.cambioDeGraves / enCurso.plan.duracion) * 100}%"
-            title="Aquí se cambian los graves"></i>`
-    : ''}
+      <div class="rejilla-compases" id="rejilla-compases" aria-hidden="true">
+        ${Array.from({ length: enCurso.plan.compases }, (unused, i) => {
+    const esElCambio = enCurso.plan.cambioDeGraves
+            && Math.round(enCurso.plan.cambioDeGraves / enCurso.plan.compasSegundos) === i;
+    return `<i class="${esElCambio ? 'cambio' : ''}"></i>`;
+  }).join('')}
       </div>
       <p id="mezcla-estado">Mezclando · ${esc(enCurso.resumen)}</p>
       <div class="platos-vivos" id="platos-vivos"></div>
@@ -112,9 +117,17 @@ export function pintarMezclador() {
       </div>
     </div>
 
-    <button class="btn btn-primary grande" data-mezcla="ahora"${disponible.puede ? '' : ' disabled'}>
-      ${ICO.play}Mezclar ahora
-    </button>
+    <div class="botonera-mezcla">
+      <button class="btn btn-primary grande" data-mezcla="ahora"${disponible.puede ? '' : ' disabled'}>
+        ${ICO.play}Mezclar ahora
+      </button>
+      ${porAnalizar.length ? `<button class="btn grande" data-mezcla="analizar-par">
+        ${ICO.waves}Analizar ${porAnalizar.length === 1 ? 'la que falta' : 'las dos'}
+      </button>` : ''}
+      <button class="btn grande" data-mezcla="analizar-cola" title="Tempo, tonalidad y rejilla de todo lo que espera">
+        ${ICO.waves}Analizar la cola
+      </button>
+    </div>
     ${disponible.puede ? '' : `<p class="hint">${esc(disponible.motivo)}</p>`}
 
     <p class="nota-mezcla">La transición empieza en el siguiente inicio de compás de la que está sonando,
@@ -152,22 +165,33 @@ function platoVivo(estado, papel) {
  */
 export function refrescarProgreso() {
   const { enCurso } = estadoDeMezcla();
-  const barra = document.querySelector('#mezcla-progreso');
-  if (!barra || !enCurso) return;
+  const rejilla = document.querySelector('#rejilla-compases');
+  if (!rejilla || !enCurso) return;
+  const { plan } = enCurso;
   const desdeElLanzamiento = (Date.now() - enCurso.desde) / 1000;
   const espera = enCurso.espera || 0;
   const transcurrido = desdeElLanzamiento - espera;
+  const compasActual = Math.floor(transcurrido / plan.compasSegundos);
 
-  const porcentaje = Math.min(100, Math.max(0, (transcurrido / enCurso.plan.duracion) * 100));
-  barra.style.width = `${porcentaje}%`;
-  barra.classList.toggle('tras-cambio', Boolean(enCurso.plan.cambioDeGraves)
-    && transcurrido >= enCurso.plan.cambioDeGraves);
+  // La transición se cuenta por compases, no por porcentaje: es como se cuenta
+  // en una cabina y es la única manera de ver si va cuadrada.
+  [...rejilla.children].forEach((celda, i) => {
+    celda.classList.toggle('pasado', i < compasActual);
+    celda.classList.toggle('ahora', i === compasActual);
+  });
 
   const texto = document.querySelector('#mezcla-estado');
   if (texto) {
-    texto.textContent = transcurrido < 0
-      ? `Esperando al inicio de compás · ${(-transcurrido).toFixed(1)} s`
-      : `Mezclando · ${enCurso.resumen}`;
+    const alCambio = plan.cambioDeGraves
+      ? Math.ceil((plan.cambioDeGraves - transcurrido) / plan.compasSegundos)
+      : 0;
+    if (transcurrido < 0) {
+      texto.textContent = `Entra en ${(-transcurrido).toFixed(1)} s · ${plan.porFrases ? 'al empezar la frase' : 'al empezar el compás'}`;
+    } else if (alCambio > 0) {
+      texto.textContent = `Compás ${Math.min(compasActual + 1, plan.compases)} de ${plan.compases} · cambio de graves en ${alCambio === 1 ? 'un compás' : `${alCambio} compases`}`;
+    } else {
+      texto.textContent = `Compás ${Math.min(compasActual + 1, plan.compases)} de ${plan.compases} · graves cambiados`;
+    }
   }
 
   const vivos = document.querySelector('#platos-vivos');

@@ -33,11 +33,14 @@ import { bindQueue, renderQueue } from './ui/queue.js';
 import { abrirSonido, bindSonido, cerrarSonido } from './ui/sonido.js';
 import { alternarVisualizador, montarVisualizador } from './ui/visualizador.js';
 import { analizarPista } from './analisis.js';
+import { analizandoLote, analizarLote, cancelarLote } from './analisis-lote.js';
 import {
   alCambiarMezclador,
   cambiarAjustes,
   margenAutomatico,
   mezclarAhora,
+  prepararPlan,
+  terminarMezcla,
 } from './mezclador.js';
 import { refrescarProgreso } from './ui/vista-mezclador.js';
 import {
@@ -381,48 +384,69 @@ const actions = {
   reveal: (id) => api.library.reveal(id),
 
   /**
-   * Tempo y tonalidad. Se analiza a petición porque decodificar el audio cuesta
-   * segundos por canción: hacerlo con toda la biblioteca al importar sería
-   * tenerla bloqueada durante horas.
+   * Tempo, tonalidad y rejilla. Se analiza a petición porque decodificar el
+   * audio cuesta segundos por canción: hacerlo con toda la biblioteca al
+   * importar sería tenerla bloqueada durante horas.
+   *
+   * En lote es un trabajo con progreso y con botón de parar, y se salta de
+   * serie lo que ya está analizado: volver a analizar mil canciones para
+   * cambiar dos es tiempo tirado.
    */
-  async analizar(ids) {
+  async analizar(ids, { forzar = false, silencio = false } = {}) {
     const motor = player.engine();
     if (!motor) {
       toast('Este equipo no permite analizar el audio.');
-      return;
+      return null;
     }
+    if (analizandoLote()) {
+      toast('Ya hay un análisis en marcha. Puedes pararlo desde el aviso de arriba.');
+      return null;
+    }
+
     const chip = $('#chip');
     const texto = $('#chip-text');
-    chip.classList.add('show');
-    let hechas = 0;
-    let fallidas = 0;
-    for (const id of ids) {
-      const track = getTrack(id);
-      texto.textContent = `Analizando ${hechas + 1}/${ids.length}`;
-      try {
-        const resultado = await analizarPista(id, motor.contexto);
-        await api.track.analysis(id, resultado);
-        if (track) Object.assign(track, {
-          bpm: resultado.bpm,
-          key: resultado.key,
-          tonalidad: resultado.tonalidad,
-        });
-        hechas += 1;
-      } catch {
-        fallidas += 1;
-      }
-    }
-    chip.classList.remove('show');
+    const resumen = await analizarLote(ids, {
+      forzar,
+      analizar: (id) => analizarPista(id, motor.contexto),
+      guardar: (id, resultado) => api.track.analysis(id, resultado),
+      yaHecha: (id) => {
+        const track = getTrack(id);
+        return Boolean(track?.bpm && track?.rejilla);
+      },
+      titulo: (id) => getTrack(id)?.title ?? '',
+      alProgreso: (estado) => {
+        if (!estado) {
+          chip.classList.remove('show');
+          return;
+        }
+        chip.classList.add('show');
+        const cuenta = `${Math.min(estado.hechas + estado.fallidas + 1, estado.total)}/${estado.total}`;
+        texto.textContent = estado.titulo
+          ? `Analizando ${cuenta} · ${estado.titulo}`
+          : `Analizando ${cuenta}`;
+      },
+    });
+
     await refreshLibrary();
     renderNowPlaying();
+    if (state.view.type === 'mezclador') renderStage();
+    if (silencio || !resumen?.ok) return resumen;
+
     const primera = ids.length === 1 ? getTrack(ids[0]) : null;
-    if (primera?.bpm) {
+    if (resumen.cancelado) {
+      toast(`Análisis parado · ${plural(resumen.hechas, 'canción analizada', 'canciones analizadas')}`);
+    } else if (!resumen.total && resumen.saltadas) {
+      toast(resumen.saltadas === 1 ? 'Esa canción ya estaba analizada.' : 'Ya estaban todas analizadas.');
+    } else if (primera?.bpm) {
       toast(`${Math.round(primera.bpm)} pulsaciones por minuto${primera.tonalidad ? ` · ${primera.tonalidad}` : ''}`);
-    } else if (hechas) {
-      toast(`${plural(hechas, 'canción analizada', 'canciones analizadas')}${fallidas ? ` · ${fallidas} con error` : ''}`);
+    } else if (resumen.hechas) {
+      const saltadas = resumen.saltadas ? ` · ${resumen.saltadas} ya lo estaban` : '';
+      const fallidas = resumen.fallidas ? ` · ${resumen.fallidas} con error` : '';
+      toast(`${plural(resumen.hechas, 'canción analizada', 'canciones analizadas')}${saltadas}${fallidas}`);
     } else {
       toast('No he podido analizar el audio.');
     }
+    return resumen;
   },
 
   /**
@@ -605,6 +629,19 @@ const actions = {
       case 'analizar':
         actions.analizar([valor]).then(() => renderStage());
         return;
+      case 'analizar-par': {
+        const preparado = prepararPlan();
+        const ids = [preparado?.saliente?.id, preparado?.entrante?.id].filter(Boolean);
+        actions.analizar(ids).then(() => renderStage());
+        return;
+      }
+      case 'analizar-cola': {
+        // Todo lo que espera: lo puesto a mano y lo que queda de la lista.
+        const ids = [state.currentId, ...state.queue.manual, ...state.queue.order.slice(state.queue.index)]
+          .filter(Boolean);
+        actions.analizar(ids).then(() => renderStage());
+        return;
+      }
       case 'compases':
         cambiarAjustes({ compases: Number(valor) });
         break;
@@ -702,6 +739,25 @@ const actions = {
       case 'rescan':
         api.library.rescan();
         break;
+      case 'analizar': {
+        // Lo seleccionado si hay selección; si no, todo lo que se está viendo.
+        const objetivo = state.selection.size > 1
+          ? tracks.filter((track) => state.selection.has(track.id))
+          : tracks;
+        if (!objetivo.length) return;
+        const faltan = objetivo.filter((track) => !(track.bpm && track.rejilla));
+        if (!faltan.length) {
+          const rehacer = await dialog({
+            title: `¿Volver a analizar ${plural(objetivo.length, 'canción', 'canciones')}?`,
+            message: 'Ya están todas analizadas. Volver a hacerlo cuesta unos segundos por canción y solo hace falta si el resultado no cuadra.',
+            ok: 'Volver a analizar',
+          });
+          if (!rehacer) return;
+        }
+        await actions.analizar(objetivo.map((track) => track.id), { forzar: !faltan.length });
+        renderStage();
+        break;
+      }
       case 'drop-missing': {
         const ok = await dialog({
           title: '¿Quitar las canciones que ya no están?',
@@ -1261,6 +1317,14 @@ async function boot() {
       return automatico || state.crossfade;
     },
     onCercaDelFinal: encadenarSiguiente,
+    // El mezclador se entera por aquí de que su transición ha terminado o se ha
+    // cortado: antes lo adivinaba con un temporizador y la pantalla se quedaba
+    // mezclando después de darle a siguiente.
+    onMezcla: ({ en }) => {
+      if (en !== 'fin') return;
+      terminarMezcla();
+      if (state.view.type === 'mezclador') renderStage();
+    },
   });
   player.bindMediaSession({ next: () => next(false), prev });
   player.applyVolume();
@@ -1301,7 +1365,12 @@ async function boot() {
       { key: 'rescan', label: 'Analizar la biblioteca de nuevo', run: () => api.library.rescan() },
     ]);
   });
-  $('#chip-stop').addEventListener('click', () => api.library.stopScan());
+  $('#chip-stop').addEventListener('click', () => {
+    // El mismo botón para las dos esperas largas que hay: leer la carpeta y
+    // analizar. Manda la que esté en marcha.
+    if (analizandoLote()) cancelarLote();
+    else api.library.stopScan();
+  });
   $('#sleep').addEventListener('click', () => cancelarTemporizador({ avisar: true }));
   $('#btn-menu').addEventListener('click', (event) => {
     const rect = event.currentTarget.getBoundingClientRect();

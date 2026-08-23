@@ -17,6 +17,12 @@ import { rejillaCompleta } from '../shared/beats.js';
 
 const TASA_ANALISIS = 11025;
 const SEGUNDOS_MAXIMOS = 90;
+/**
+ * La rejilla se ajusta sobre una ventana más larga que el tempo y la tonalidad:
+ * cuantos más golpes entran en el ajuste, más fino sale el tempo, y de ahí sale
+ * que la rejilla siga cuadrando en el minuto seis y no solo en el primero.
+ */
+const SEGUNDOS_REJILLA = 240;
 
 /** Mezcla a mono y baja la frecuencia de muestreo promediando, sin aliasing grosero. */
 export function reducir(buffer, tasaDestino = TASA_ANALISIS) {
@@ -57,13 +63,17 @@ export async function analizarPista(id, contexto) {
   const { envolvente, tasa: tasaEnvolvente } = envolventeDeAtaques(tramo, tasa);
   const tempo = detectarTempo(envolvente, tasaEnvolvente);
   const tono = detectarTonalidad(chromaDeMuestras(tramo, tasa));
-  const bpm = tempo.confianza >= 0.12 ? tempo.bpm : 0;
+  const bpmAprox = tempo.confianza >= 0.12 ? tempo.bpm : 0;
 
-  // La rejilla se busca sobre el principio de la canción, no sobre el tramo
-  // central: el desfase que hace falta para mezclar es el del archivo entero.
-  const rejilla = bpm
-    ? rejillaCompleta(muestras.subarray(0, Math.floor(tasa * 60)), tasa, bpm)
-    : { offset: 0, fuerza: 0, tiempoFuerte: 0, porBombo: false };
+  // La rejilla se ajusta sobre la canción entera —hasta un límite— y no sobre
+  // un trozo: cuantos más golpes entran en el ajuste, más fino sale el tempo, y
+  // mirando desde el principio se sabe además por dónde entra de verdad. Su
+  // tempo es el bueno: el del detector es solo el punto de partida.
+  const largo = Math.min(muestras.length, Math.floor(tasa * SEGUNDOS_REJILLA));
+  const rejilla = bpmAprox
+    ? rejillaCompleta(muestras.subarray(0, largo), tasa, bpmAprox)
+    : null;
+  const bpm = rejilla?.bpm || bpmAprox;
 
   return {
     bpm,
@@ -71,13 +81,18 @@ export async function analizarPista(id, contexto) {
     key: tono.confianza >= 0.55 ? tono.cifrado : '',
     tonalidad: tono.confianza >= 0.55 ? tono.tonalidad : '',
     keyConfianza: tono.confianza,
-    rejilla: {
-      bpm,
-      offset: rejilla.offset,
-      tiempoFuerte: rejilla.tiempoFuerte,
-      fuerza: rejilla.fuerza,
-      porBombo: rejilla.porBombo,
+    rejilla: rejilla ?? {
+      bpm: 0,
+      offset: 0,
+      fuerza: 0,
+      tiempoFuerte: 0,
+      fuerzaCompas: 0,
+      compasFuerte: 0,
+      fuerzaFrase: 0,
+      compasesPorFrase: 4,
       tiemposPorCompas: 4,
+      porBombo: false,
+      entrada: 0,
     },
   };
 }

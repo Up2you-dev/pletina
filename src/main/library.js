@@ -377,18 +377,29 @@ export function createLibrary({ store, covers, escritor = escritorPorDefecto, on
     return store.update((d) => {
       const track = d.tracks[id];
       if (!track) return null;
+      // El tempo se guarda con decimales a propósito: redondearlo a una décima
+      // son cuarenta milisegundos de desfase al final de una canción, que es
+      // justo la diferencia entre una mezcla cuadrada y una que se va.
       const bpm = Number(datos.bpm);
-      track.bpm = Number.isFinite(bpm) && bpm > 0 ? Math.round(bpm * 10) / 10 : 0;
+      track.bpm = Number.isFinite(bpm) && bpm > 0 ? Math.round(bpm * 1000) / 1000 : 0;
       track.key = typeof datos.key === 'string' ? datos.key.slice(0, 8) : '';
       track.tonalidad = typeof datos.tonalidad === 'string' ? datos.tonalidad.slice(0, 24) : '';
       // La rejilla es lo que permite pinchar en el compás: sin ella el
       // mezclador sabe a qué velocidad ir, pero no cuándo entrar.
       const rejilla = datos.rejilla ?? null;
+      const cero = (v) => Math.max(0, Number(v) || 0);
       track.rejilla = rejilla && Number(rejilla.bpm) > 0 ? {
-        bpm: Math.round(Number(rejilla.bpm) * 10) / 10,
-        offset: Math.max(0, Number(rejilla.offset) || 0),
+        bpm: Math.round(Number(rejilla.bpm) * 1000) / 1000,
+        offset: cero(rejilla.offset),
         tiempoFuerte: Math.min(7, Math.max(0, Math.round(Number(rejilla.tiempoFuerte) || 0))),
-        fuerza: Number(rejilla.fuerza) || 0,
+        fuerza: cero(rejilla.fuerza),
+        fuerzaCompas: cero(rejilla.fuerzaCompas),
+        compasFuerte: Math.min(15, Math.max(0, Math.round(Number(rejilla.compasFuerte) || 0))),
+        fuerzaFrase: cero(rejilla.fuerzaFrase),
+        compasesPorFrase: Math.min(16, Math.max(1, Math.round(Number(rejilla.compasesPorFrase) || 4))),
+        // Por dónde empieza a sonar de verdad: lo que evita pinchar el silencio
+        // del principio del archivo.
+        entrada: cero(rejilla.entrada),
         porBombo: Boolean(rejilla.porBombo),
         tiemposPorCompas: Math.min(8, Math.max(2, Math.round(Number(rejilla.tiemposPorCompas) || 4))),
       } : null;

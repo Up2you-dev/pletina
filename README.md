@@ -58,7 +58,7 @@ npm run dist:win     # y esto te deja el instalador en release\
 Y para lo demás:
 
 ```bash
-npm run verify       # lint + 193 pruebas + arranque real, arrastre y mezcla
+npm run verify       # lint + 224 pruebas + arranque real, arrastre y mezcla
 npm run dist:mac     # .dmg (arm64 + x64)  · hay que ejecutarlo EN un Mac
 npm run dist:linux   # AppImage + .deb
 ```
@@ -149,19 +149,29 @@ a hacer antes de hacerlo.
 
 Qué hace en una transición:
 
-1. **Espera al compás.** El pinchazo no cae al pulsar el botón, sino en el
-   siguiente inicio de compás de la que está sonando; y la que entra empieza en
-   *su* inicio de compás. Es lo que hace que los dos bombos caigan juntos en vez
-   de pisarse.
-2. **Iguala el tempo** de la que entra al de la que sale, siempre que la
+1. **Espera a la frase.** El pinchazo no cae al pulsar el botón, sino en el
+   siguiente inicio de frase de la que está sonando —o de compás, si la frase no
+   está clara—; y la que entra empieza en el suyo. Es lo que hace que los dos
+   bombos caigan juntos en vez de pisarse.
+2. **Entra por donde suena.** Casi ningún archivo empieza a sonar en el segundo
+   cero, así que se detecta por dónde entra de verdad y se pincha desde ahí, no
+   desde el silencio del principio.
+3. **Iguala el tempo** de la que entra al de la que sale, siempre que la
    distancia sea inferior al 12 % —medio tempo y doble tempo cuentan como el
    mismo pulso—. Con el estirado de tiempo activado, la canción cambia de
    velocidad sin cambiar de tonalidad.
-3. **Cambia los graves.** La que entra lo hace con los graves fuera (−26 dB):
-   dos bombos a la vez suenan a barro. Sube de volumen durante la primera mitad
-   y, en un tiempo seco a mitad de transición, se intercambian los graves. La
-   que sale se va por arriba en la segunda mitad.
-4. **Avisa en vez de disimular.** Si a una canción le falta el análisis, si los
+4. **Empuja el plato.** Medio segundo después de arrancar mide el desfase real
+   entre las dos rejillas y lo corrige acelerando un 2 % lo justo para
+   recuperarlo, como quien empuja el plato con el dedo: entre pedirle una
+   posición a un archivo y que suene se van milisegundos, y veinte milisegundos
+   ya se oyen. Medido en la prueba de extremo a extremo: 2 ms de desfase mediano
+   durante toda la transición.
+5. **Cambia los graves.** La que entra lo hace con los graves fuera (−26 dB) y
+   con un pellizco en los medios, que es donde se pelean las voces: dos bombos a
+   la vez suenan a barro. Sube de volumen durante la primera mitad y, en un
+   inicio de compás a mitad de transición, se intercambian los graves. La que
+   sale se va por arriba en la segunda mitad.
+6. **Avisa en vez de disimular.** Si a una canción le falta el análisis, si los
    tempos están demasiado lejos o si las tonalidades chocan, lo dice antes de
    sonar y ofrece analizar ahí mismo.
 
@@ -169,6 +179,21 @@ Hay tres maneras de entrar: *Cambio de graves* (la de siempre), *Fundido largo*
 (cruce de igual potencia) y *Corte en el compás* (seco, sin cruce), de cuatro a
 treinta y dos compases. Con «mezclar sola» encendido, lo hace con cada canción
 de la cola sin tocar nada.
+
+**La rejilla es lo que hace que suene cuadrado.** No se estima: se ajusta. Del
+detector de tempo sale un número aproximado, y a partir de ahí se busca el par
+(tempo, fase) que hace que *todos* los golpes de la canción caigan encima de la
+rejilla. La diferencia importa más de lo que parece: medio punto de error en el
+tempo son casi dos segundos de desfase al final de una canción de seis minutos,
+y una mezcla que empieza cuadrada y acaba de cualquier manera. La energía del
+bombo se mide con un filtro aplicado de ida y de vuelta, que no tiene desfase,
+en marcos de seis milisegundos.
+
+**Y la pantalla lo enseña por compases.** Mientras dura la transición no hay una
+barra de porcentaje: hay ocho casillas —una por compás—, la que está sonando,
+la del cambio de graves marcada, y debajo el volumen y los graves reales de cada
+plato leídos del grafo de audio. Es como se cuenta en una cabina y es la única
+manera de ver si va cuadrada.
 
 **Cómo está partido.** El plan de una mezcla es una función pura —qué pasa y
 cuándo, como una lista de eventos con su instante, su parámetro y su rampa— en
@@ -233,7 +258,7 @@ y los empaqueta en `.ico` y `.icns`).
 
 ## Pruebas
 
-- `npm test` — 193 pruebas sobre la lógica pura (cola, orden y búsqueda,
+- `npm test` — 224 pruebas sobre la lógica pura (cola, orden y búsqueda,
   formato, `Range`), sobre el almacén y la biblioteca contra archivos de verdad
   en carpetas temporales —análisis incremental, ausencias, discos desconectados,
   correcciones de etiquetas, listas y M3U de ida y vuelta— y de contrato entre
@@ -245,14 +270,18 @@ y los empaqueta en `.ico` y `.icns`).
   comprueba que acaba en la biblioteca. Existe porque el error que rompía
   arrastrar y soltar vivía en la costura entre el renderizador y el preload,
   donde ninguna de las otras dos podía verlo.
-- `npm run test:mezcla` — fabrica dos canciones con bombo a 128 y 126, las
-  analiza con el analizador de verdad y mide la transición sobre el grafo de
-  audio: que el pinchazo espera al compás, que la que entra va a la velocidad
-  del plan sin cambiar de tono, que entra sin graves y que los compases de las
-  dos se mantienen juntos (menos de un 2 % de compás de desfase durante quince
-  segundos). Existe por el mismo motivo que la anterior: el plan era correcto y
-  el plato no lo aplicaba, porque asignar `src` reinicia `playbackRate`. Ninguna
-  prueba unitaria puede ver eso.
+- `npm run test:mezcla` — veintiuna comprobaciones sobre la aplicación de
+  verdad. Fabrica dos canciones con bombo a 128 y 126 —una con cuatro segundos
+  de silencio delante—, las analiza en lote desde la biblioteca y mide la
+  transición sobre el grafo de audio: que el tempo se afina hasta la centésima,
+  que el desfase de la rejilla cae encima del bombo, que el pinchazo espera al
+  compás, que la que entra no arranca por el silencio, que va a la velocidad del
+  plan sin cambiar de tono, que entra sin graves, y que los compases de las dos
+  se mantienen a menos de un 0,6 % durante quince segundos. Y luego corta una
+  mezcla a la mitad y comprueba que la canción se queda con sus graves. Existe
+  por el mismo motivo que la anterior: los dos errores más gordos del mezclador
+  —el tempo que no llegaba al plato y los graves que no volvían— no los puede
+  ver ninguna prueba unitaria.
 
 En Linux sin escritorio, las dos últimas usan `xvfb-run` automáticamente.
 
@@ -269,6 +298,12 @@ En Linux sin escritorio, las dos últimas usan `xvfb-run` automáticamente.
 - El análisis de tempo acierta bien con música de pulso marcado y falla más con
   música libre o en vivo; por eso guarda su nivel de confianza y no se inventa un
   número cuando no lo tiene claro.
+- La rejilla supone un tempo constante en toda la canción. Con música tocada a
+  mano —o con un final que se va frenando— cuadra al principio y se separa al
+  final; con música de caja de ritmos, clava.
+- Analizar cuesta unos segundos por canción, casi todos en decodificar el audio.
+  Una biblioteca grande se analiza en lote y en segundo plano, pero no es
+  instantáneo.
 - No hay reproducción sin cortes (*gapless*) de verdad: se precarga la siguiente
   canción para acortar el salto, pero entre pistas hay un silencio mínimo.
 - Las carátulas sueltas se buscan por nombre (`cover.jpg`, `folder.jpg`…), no por

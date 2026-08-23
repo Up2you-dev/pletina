@@ -208,6 +208,9 @@ export function start() {
 }
 
 export const pause = () => {
+  // Pausar a mitad de una mezcla la corta: si no, al volver solo arrancaría uno
+  // de los dos platos y la automatización ya habría seguido su camino.
+  cancelarFundido();
   for (const p of platos) p.el.pause();
 };
 
@@ -260,14 +263,27 @@ export function warmNext(id) {
 
 /* ------------------------------------------------------------------ fundido */
 
+/**
+ * Corta una transición a medias y deja los dos platos como estaban.
+ *
+ * Lo importante es lo de «como estaban»: a mitad de una mezcla, el plato que
+ * suena tiene los graves quitados y los medios pellizcados. Si se corta sin
+ * devolverlos, la canción sigue sonando sin graves para siempre y no hay manera
+ * de saber por qué.
+ */
 function cancelarFundido() {
   if (!encadenando) return;
   encadenando = false;
-  const entrante = otro();
-  entrante.el.pause();
-  entrante.el.removeAttribute('src');
-  entrante.id = null;
+  const otroPlato = otro();
+  otroPlato.el.pause();
+  otroPlato.el.removeAttribute('src');
+  otroPlato.id = null;
+  if (motor) {
+    motor.limpiarPlato(otroPlato.nodos);
+    motor.limpiarPlato(plato().nodos);
+  }
   fijarGanancia(plato(), 1);
+  hooks.onMezcla?.({ en: 'fin', cancelada: true });
 }
 
 /**
@@ -335,6 +351,33 @@ export function mezclar(id, plan, { estirarTiempo = true } = {}) {
   const retardoArranque = Math.max(0, espera - margen);
   if (retardoArranque > 0.02) setTimeout(arrancar, retardoArranque * 1000);
   else arrancar();
+
+  /**
+   * El empujoncito.
+   *
+   * Colocar el plato en su sitio no basta: entre pedirle una posición y que
+   * empiece a sonar se le van unos milisegundos, y veinte milisegundos ya se
+   * oyen como un eco. Así que un rato después de arrancar se mide el desfase
+   * real entre las dos rejillas y se corrige como lo haría un pinchadiscos:
+   * acelerando un pelo hasta recuperarlo, no dando un salto.
+   */
+  const ajustarFase = () => {
+    if (!encadenando || entrante.id !== id) return;
+    const velSalienteAhora = saliente.el.playbackRate || 1;
+    const esperado = plan.inicioEntrante
+      + ((saliente.el.currentTime - plan.arranque) * velEntrante) / velSalienteAhora;
+    const error = esperado - entrante.el.currentTime;
+    // Menos de tres milisegundos no se oye; más de ciento cincuenta no es un
+    // retraso de arranque, es otra cosa, y ahí corregir sería empeorar.
+    if (!Number.isFinite(error) || Math.abs(error) < 0.003 || Math.abs(error) > 0.15) return;
+    const empuje = 0.02 * Math.sign(error);
+    const segundos = Math.min(2, Math.abs(error) / (velEntrante * 0.02));
+    entrante.el.playbackRate = velEntrante * (1 + empuje);
+    setTimeout(() => {
+      if (encadenando && entrante.id === id) entrante.el.playbackRate = velEntrante;
+    }, segundos * 1000);
+  };
+  setTimeout(ajustarFase, (retardoArranque + 0.35) * 1000);
 
   activo = 1 - activo;
   state.currentId = id;

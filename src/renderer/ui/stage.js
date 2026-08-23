@@ -148,6 +148,14 @@ function toolbarHtml(tracks) {
   if (listy && tracks.length) {
     parts.push(`<button class="btn btn-primary" data-tool="play-all">${ICO.play}Reproducir</button>`);
     parts.push(`<button class="btn" data-tool="shuffle-all">${ICO.shuffle}Aleatorio</button>`);
+    // Analizar en lote: sin esto, sacarle el tempo a una biblioteca entera era
+    // ir canción por canción desde el menú de cada fila.
+    const objetivo = state.selection.size > 1
+      ? tracks.filter((track) => state.selection.has(track.id))
+      : tracks;
+    const faltan = objetivo.filter((track) => !(track.bpm && track.rejilla)).length;
+    parts.push(`<button class="btn" data-tool="analizar" title="Tempo, tonalidad y rejilla de compases">
+      ${ICO.waves}${faltan ? `Analizar ${faltan}` : 'Volver a analizar'}</button>`);
   }
   if (state.selection.size > 1) {
     parts.push(`<span class="label">${plural(state.selection.size, 'seleccionada', 'seleccionadas')}</span>`);

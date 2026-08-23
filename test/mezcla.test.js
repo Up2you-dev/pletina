@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GRAVE_FUERA, describirPlan, planDeMezcla } from '../src/shared/mezcla.js';
+import { GRAVE_FUERA, MEDIO_FUERA, describirPlan, planDeMezcla } from '../src/shared/mezcla.js';
 
 const rejilla = (bpm, offset = 0) => ({ bpm, offset, tiempoFuerte: 0, tiemposPorCompas: 4 });
 
@@ -169,5 +169,91 @@ describe('describirPlan', () => {
 
   it('con un plan vacío no se rompe', () => {
     expect(describirPlan(null)).toBe('');
+  });
+});
+
+describe('cuadrar como un pinchadiscos', () => {
+  const conFrase = (bpm, offset = 0) => ({
+    bpm,
+    offset,
+    tiempoFuerte: 0,
+    tiemposPorCompas: 4,
+    compasFuerte: 0,
+    compasesPorFrase: 4,
+    fuerzaFrase: 0.4,
+  });
+
+  it('pincha en frase cuando las dos la tienen clara', () => {
+    const plan = planDeMezcla({
+      saliente: { bpm: 128, duracion: 300, posicion: 60, rejilla: conFrase(128) },
+      entrante: { bpm: 128, duracion: 300, rejilla: conFrase(128, 0.2) },
+      compases: 8,
+    });
+    expect(plan.porFrases).toBe(true);
+    const frase = (60 / 128) * 16;
+    expect(plan.arranque % frase).toBeCloseTo(0, 2);
+    // Y la que entra empieza en el primer inicio de frase suyo.
+    expect((plan.inicioEntrante - 0.2) % frase).toBeCloseTo(0, 2);
+    expect(describirPlan(plan)).toMatch(/en frase/);
+  });
+
+  it('si una no tiene frase clara, se conforma con el compás', () => {
+    const plan = planDeMezcla({
+      saliente: { bpm: 128, duracion: 300, posicion: 60, rejilla: conFrase(128) },
+      entrante: { bpm: 128, duracion: 300, rejilla: rejilla(128) },
+      compases: 8,
+    });
+    expect(plan.porFrases).toBe(false);
+    expect(describirPlan(plan)).toMatch(/en compás/);
+    const compas = (60 / 128) * 4;
+    expect(plan.arranque % compas).toBeCloseTo(0, 2);
+  });
+
+  it('con transiciones que no miden frases enteras, tampoco', () => {
+    const plan = planDeMezcla({
+      saliente: { bpm: 128, duracion: 300, posicion: 60, rejilla: conFrase(128) },
+      entrante: { bpm: 128, duracion: 300, rejilla: conFrase(128) },
+      compases: 2,
+    });
+    expect(plan.porFrases).toBe(false);
+  });
+
+  it('el cambio de graves cae en un inicio de compás', () => {
+    for (const compases of [4, 8, 16, 32]) {
+      const plan = planDeMezcla({ ...base, compases });
+      const compas = plan.compasSegundos;
+      expect(plan.cambioDeGraves / compas).toBeCloseTo(Math.round(plan.cambioDeGraves / compas), 3);
+      expect(plan.cambioDeGraves).toBeGreaterThan(0);
+      expect(plan.cambioDeGraves).toBeLessThan(plan.duracion);
+    }
+  });
+
+  it('la duración plena no se recorta: es la que dice cuándo lanzar la mezcla', () => {
+    const plan = planDeMezcla({
+      ...base,
+      saliente: { ...base.saliente, duracion: 71.4, posicion: 60 },
+      compases: 8,
+    });
+    expect(plan.duracion).toBeLessThan(plan.duracionPlena);
+    expect(plan.duracionPlena).toBeCloseTo((60 / 128) * 4 * 8, 2);
+  });
+
+  it('cuando hay que acortar, se acorta por compases enteros', () => {
+    const plan = planDeMezcla({
+      ...base,
+      saliente: { ...base.saliente, duracion: 71.4, posicion: 60 },
+      compases: 8,
+    });
+    expect(plan.avisos.join(' ')).toMatch(/se acorta/);
+    expect(plan.duracion / plan.compasSegundos).toBeCloseTo(Math.round(plan.duracion / plan.compasSegundos), 3);
+    expect(plan.duracion).toBeLessThanOrEqual(71.4 - plan.arranque + 0.001);
+  });
+
+  it('la que entra también deja sitio en los medios hasta el cambio', () => {
+    const plan = planDeMezcla(base);
+    const medios = eventosDe(plan, 'entrante', 'medio');
+    expect(medios[0]).toMatchObject({ en: 0, a: MEDIO_FUERA });
+    // Y se los devuelve justo en el cambio de graves.
+    expect(medios.some((e) => e.en === plan.cambioDeGraves && e.a === 0)).toBe(true);
   });
 });

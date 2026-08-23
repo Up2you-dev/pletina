@@ -28,14 +28,14 @@ const TASA = 22050;
  * Una canción de bombo: un pulso grave que decae en cada tiempo, con un siseo
  * corto entre medias. Es lo mínimo para que el analizador tenga algo que medir.
  */
-function wavConBombo({ bpm, offset, segundos = 26 }) {
+function wavConBombo({ bpm, offset, silencio = 0, segundos = 26 }) {
   const total = Math.floor(TASA * segundos);
   const datos = Buffer.alloc(total * 2);
   const periodo = 60 / bpm;
   const muestras = new Float32Array(total);
 
   for (let golpe = 0; ; golpe += 1) {
-    const en = offset + golpe * periodo;
+    const en = silencio + offset + golpe * periodo;
     if (en >= segundos) break;
     const desde = Math.floor(en * TASA);
     // Bombo: seno de 60 Hz con caída exponencial rápida.
@@ -77,7 +77,9 @@ const musica = path.join(perfil, 'musica');
 await rm(musica, { recursive: true, force: true });
 await (await import('node:fs/promises')).mkdir(musica, { recursive: true });
 const SALIENTE = { bpm: 128, offset: 0.1 };
-const ENTRANTE = { bpm: 126, offset: 0.25 };
+// La que entra lleva cuatro segundos de silencio delante, como tantos archivos:
+// pinchar por el segundo cero metería ese silencio en la mezcla.
+const ENTRANTE = { bpm: 126, offset: 0.25, silencio: 4, segundos: 34 };
 await writeFile(path.join(musica, 'Sala Uno - Sale.wav'), wavConBombo(SALIENTE));
 await writeFile(path.join(musica, 'Sala Uno - Entra.wav'), wavConBombo(ENTRANTE));
 await writeFile(path.join(perfil, 'biblioteca.json'), JSON.stringify({
@@ -158,6 +160,40 @@ const comprobar = (nombre, bien, detalle) => {
 
 await sleep(5000);
 
+/* ------------------------------------------------- análisis en lote */
+
+console.log('análisis en lote:');
+const boton = await evaluar(`document.querySelector('[data-tool="analizar"]')?.textContent.trim()`);
+comprobar('la biblioteca ofrece analizar lo que falta', /Analizar 2/.test(boton ?? ''), boton);
+
+await evaluar(`document.querySelector('[data-tool="analizar"]').click()`);
+let avisoVisto = false;
+for (let i = 0; i < 900; i += 1) {
+  await sleep(100);
+  const aviso = await evaluar(`(() => {
+    const c = document.querySelector('#chip');
+    return c?.classList.contains('show') ? document.querySelector('#chip-text')?.textContent : null;
+  })()`);
+  if (aviso) avisoVisto = true;
+  else if (avisoVisto) break;
+}
+comprobar('mientras analiza lo dice', avisoVisto);
+
+const analizadas = await evaluar(`(async () => {
+  const s = await window.pletina.library.snapshot();
+  return s.tracks.map(t => ({ titulo: t.title, bpm: t.bpm, rejilla: Boolean(t.rejilla) }));
+})()`);
+comprobar('deja las dos analizadas', analizadas.every(t => t.bpm > 0 && t.rejilla),
+  analizadas.map(t => `${t.titulo} ${t.bpm?.toFixed(2)}`).join(' · '));
+
+// Y a la segunda no repite el trabajo: pregunta antes de rehacerlo.
+await evaluar(`document.querySelector('[data-tool="analizar"]').click()`);
+await sleep(700);
+const pregunta = await evaluar(`document.querySelector('.veil .modal h3')?.textContent ?? ''`);
+comprobar('no vuelve a analizar lo ya hecho sin preguntar', /Volver a analizar/.test(pregunta), pregunta);
+await evaluar(`document.querySelector('.veil [data-x="cancel"]')?.click()`);
+await sleep(300);
+
 // La que sale suena; la que entra espera en la cola.
 const puestas = await evaluar(`(async () => {
   const s = await window.pletina.library.snapshot();
@@ -174,22 +210,8 @@ const puestas = await evaluar(`(async () => {
 if (!puestas) await terminar(1, 'MEZCLA: la biblioteca no ha leído las dos canciones');
 await sleep(1500);
 
-// Al mezclador, y a analizar desde su propia pantalla.
 await evaluar(`[...document.querySelectorAll('.nav-item')].find(n => n.textContent.includes('Mezclador')).click()`);
 await sleep(600);
-for (let vuelta = 0; vuelta < 2; vuelta += 1) {
-  const queda = await evaluar(`(() => {
-    const b = document.querySelector('[data-mezcla="analizar"]');
-    if (b) b.click();
-    return Boolean(b);
-  })()`);
-  if (!queda) break;
-  for (let i = 0; i < 40; i += 1) {
-    await sleep(500);
-    if (!await evaluar(`document.querySelector('#chip')?.classList.contains('show')`)) break;
-  }
-  await sleep(500);
-}
 
 const compasDe = (bpm) => (4 * 60) / bpm;
 const fichas = await evaluar(`(async () => {
@@ -202,13 +224,26 @@ if (!fichas) await terminar(1, 'MEZCLA: el mezclador no ha podido preparar el pl
 
 const compas = compasDe(fichas?.saliente?.bpm || 128);
 console.log('análisis:');
-comprobar('el tempo de la que sale se detecta', Math.abs(fichas.saliente.bpm - SALIENTE.bpm) <= 1.5,
-  `${fichas.saliente.bpm?.toFixed(1)} bpm (se fabricó a ${SALIENTE.bpm})`);
-comprobar('el tempo de la que entra se detecta', Math.abs(fichas.entrante.bpm - ENTRANTE.bpm) <= 1.5,
-  `${fichas.entrante.bpm?.toFixed(1)} bpm (se fabricó a ${ENTRANTE.bpm})`);
+comprobar('el tempo de la que sale se afina', Math.abs(fichas.saliente.bpm - SALIENTE.bpm) <= 0.15,
+  `${fichas.saliente.bpm?.toFixed(2)} bpm (se fabricó a ${SALIENTE.bpm})`);
+comprobar('el tempo de la que entra se afina', Math.abs(fichas.entrante.bpm - ENTRANTE.bpm) <= 0.15,
+  `${fichas.entrante.bpm?.toFixed(2)} bpm (se fabricó a ${ENTRANTE.bpm})`);
 comprobar('la rejilla encuentra el bombo', fichas.saliente.rejilla?.porBombo === true,
-  `desfase ${fichas.saliente.rejilla?.offset?.toFixed(3)} s (se fabricó en ${SALIENTE.offset})`);
+  `${fichas.saliente.rejilla?.porBombo ? 'sí' : 'no'}`);
+// El desfase es lo que decide si el pinchazo cae encima del bombo o al lado.
+const errorDeFase = (a, b, periodo) => {
+  const d = (((a - b) % periodo) + periodo) % periodo;
+  return Math.min(d, periodo - d);
+};
+for (const [papel, ficha, hecha] of [['sale', fichas.saliente, SALIENTE], ['entra', fichas.entrante, ENTRANTE]]) {
+  const error = errorDeFase(ficha.rejilla?.offset ?? 0, (hecha.silencio ?? 0) + hecha.offset, 60 / hecha.bpm);
+  comprobar(`el desfase de la que ${papel} cae donde el bombo`, error < 0.02,
+    `${Math.round(error * 1000)} ms de error (${ficha.rejilla?.offset?.toFixed(3)} s frente a ${hecha.offset})`);
+}
 comprobar('y el plan ajusta el tempo', fichas.velocidad > 1 && fichas.velocidad < 1.05, fichas.resumen);
+comprobar('sabe por dónde empieza a sonar la que entra',
+  Math.abs((fichas.entrante.rejilla?.entrada ?? 0) - ENTRANTE.silencio) < 0.5,
+  `entra en ${fichas.entrante.rejilla?.entrada?.toFixed(2)} s (tiene ${ENTRANTE.silencio} s de silencio)`);
 
 // Grabador fino: 30 ms de resolución sobre el estado real de los dos platos.
 // Los dos se leen en la misma llamada, así que sus tiempos son comparables
@@ -262,18 +297,27 @@ const medido = await evaluar(`(async () => {
     const uno = r.offset + (r.tiempoFuerte || 0) * (60 / r.bpm);
     return ((((t - uno) % c) + c) % c) / c;
   };
-  const distancias = juntos
-    .filter(m => de(m, entra).g > 0.05)
-    .map(m => {
-      const d = Math.abs(fase(de(m, sale).t, rejillas.sale) - fase(de(m, entra).t, rejillas.entra));
-      return Math.min(d, 1 - d);
-    })
-    .sort((a, b) => a - b);
+  const desfaseDe = (m) => {
+    const d = Math.abs(fase(de(m, sale).t, rejillas.sale) - fase(de(m, entra).t, rejillas.entra));
+    return Math.min(d, 1 - d);
+  };
+  const sonando = juntos.filter(m => de(m, entra).g > 0.05);
+  // El primer segundo y medio es el arranque, con el empujón corrigiendo el
+  // retraso de la reproducción. Lo que tiene que estar clavado es lo de después.
+  const arranca = sonando.length ? sonando[0].w : 0;
+  const distancias = sonando.filter(m => m.w > arranca + 1.5).map(desfaseDe).sort((a, b) => a - b);
+  const alPrincipio = sonando.filter(m => m.w <= arranca + 1.5).map(desfaseDe);
+
+  // La velocidad de crucero: la mediana, no el máximo, porque el empujón sube
+  // la velocidad un 2 % durante un momento a propósito.
+  const velocidades = reg.map(m => de(m, entra)?.v ?? 0).filter(v => v > 0).sort((a, b) => a - b);
 
   return {
     esperaMedida: primeraAudible ? primeraAudible.w : null,
     arranqueDelPlato: primeraSonando ? primeraSonando.w : null,
-    velocidad: Math.max(...reg.map(m => de(m, entra)?.v ?? 0)),
+    velocidad: velocidades.length ? velocidades[Math.floor(velocidades.length / 2)] : 0,
+    velocidadMaxima: velocidades.length ? velocidades[velocidades.length - 1] : 0,
+    desfaseAlEntrar: alPrincipio.length ? Math.max(...alPrincipio) : 0,
     estirando: primeraAudible ? de(primeraAudible, entra).e : null,
     graveAlEntrar: primeraAudible ? de(primeraAudible, entra).b : null,
     huboCambio: Boolean(cambio),
@@ -286,22 +330,79 @@ const medido = await evaluar(`(async () => {
 })()`);
 
 console.log('transición:');
+comprobar('la que entra no arranca por el silencio del principio', plan.inicioEntrante >= ENTRANTE.silencio - 0.1,
+  `empieza en ${plan.inicioEntrante} s`);
 comprobar('la transición espera al siguiente compás', plan.espera > 0.25,
   `${plan.espera.toFixed(2)} s de espera, con compases de ${compas.toFixed(3)} s`);
 comprobar('y no se oye ni una nota antes de tiempo',
   Math.abs(medido.esperaMedida - plan.espera) < 0.4,
   `se empieza a oír a los ${medido.esperaMedida?.toFixed(2)} s`);
-comprobar('los compases de las dos van juntos', medido.desfaseMediano < 0.08,
-  `${(medido.desfaseMediano * 100).toFixed(1)} % de compás de desfase mediano en ${medido.muestrasDeFase} medidas`);
-comprobar('sin separarse en toda la transición', medido.desfaseMaximo < 0.16,
-  `${(medido.desfaseMaximo * 100).toFixed(1)} % en el peor momento`);
+comprobar('los compases de las dos van juntos', medido.desfaseMediano < 0.006,
+  `${(medido.desfaseMediano * 100).toFixed(2)} % de compás (${Math.round(medido.desfaseMediano * compas * 1000)} ms) en ${medido.muestrasDeFase} medidas`);
+comprobar('sin separarse en toda la transición', medido.desfaseMaximo < 0.02,
+  `${(medido.desfaseMaximo * 100).toFixed(2)} % en el peor momento`);
+comprobar('el empujón deja la mezcla igual o mejor de como entró',
+  medido.desfaseMaximo <= Math.max(medido.desfaseAlEntrar, 0.006),
+  `${(medido.desfaseAlEntrar * 100).toFixed(2)} % al entrar y ${(medido.desfaseMaximo * 100).toFixed(2)} % después`);
 comprobar('el plato va a la velocidad del plan', Math.abs(medido.velocidad - plan.velocidad) < 0.001,
   `×${medido.velocidad} (plan ×${plan.velocidad})`);
+comprobar('y el empujón no pasa del 2 %', medido.velocidadMaxima <= plan.velocidad * 1.021,
+  `×${medido.velocidadMaxima.toFixed(4)} en el momento de corregir`);
 comprobar('sin cambiar el tono', medido.estirando === true);
 comprobar('la que entra lo hace sin graves', medido.graveAlEntrar <= -20, `${medido.graveAlEntrar} dB`);
 comprobar('el cambio de graves ocurre', medido.huboCambio);
 comprobar('los dos platos suenan a la vez', medido.juntos > 20, `${medido.juntos} muestras`);
 comprobar('y no hay un solo silencio', medido.mudos === 0, `${medido.mudos}`);
+
+/* --------------------------------------------- cortar a mitad de mezcla */
+
+console.log('interrupciones:');
+// Se vuelve a encolar la que ya sonó y se lanza otra mezcla para cortarla.
+await evaluar(`(async () => {
+  const q = await import('./shared/queue.js');
+  const st = await import('./state.js');
+  st.state.queue = q.enqueueNext(st.state.queue, ['${puestas.sale}']);
+})()`);
+// Tocar la cola desde fuera no repinta la pantalla: se vuelve a entrar.
+await evaluar(`[...document.querySelectorAll('.nav-item')][0].click()`);
+await sleep(300);
+await evaluar(`[...document.querySelectorAll('.nav-item')].find(n => n.textContent.includes('Mezclador')).click()`);
+await sleep(500);
+await evaluar(`document.querySelector('[data-mezcla="ahora"]')?.click()`);
+const segunda = await evaluar(`(async () => {
+  const m = await import('./mezclador.js');
+  const { enCurso, disponible } = m.estadoDeMezcla();
+  return enCurso ? { espera: enCurso.espera } : { motivo: disponible.motivo ?? 'sin motivo' };
+})()`);
+comprobar('se puede lanzar otra mezcla después de la primera', Boolean(segunda?.espera !== undefined), segunda?.motivo);
+if (segunda?.espera !== undefined) {
+  // Se corta justo cuando la que entra ya está sin graves.
+  await sleep((segunda.espera + 1.2) * 1000);
+  const enPlenaMezcla = await evaluar(`(async () => (await import('./player.js')).estadoDePlatos().filter(p => p.sonando).length)()`);
+  comprobar('a mitad de transición suenan los dos', enPlenaMezcla === 2, `${enPlenaMezcla} platos`);
+
+  await evaluar(`document.querySelector('#btn-next').click()`);
+  await sleep(1200);
+  const despues = await evaluar(`(async () => {
+    const p = await import('./player.js');
+    const m = await import('./mezclador.js');
+    const platos = p.estadoDePlatos().filter(x => x.id);
+    return {
+      sonando: platos.filter(x => x.sonando).length,
+      graves: platos.map(x => Math.round(x.grave)),
+      medios: platos.map(x => Math.round(x.medio)),
+      ganancias: platos.map(x => Math.round(x.ganancia * 100) / 100),
+      mezclando: p.mezclando(),
+      enCurso: Boolean(m.estadoDeMezcla().enCurso),
+    };
+  })()`);
+  comprobar('al pasar de canción queda un solo plato sonando', despues.sonando === 1, JSON.stringify(despues.ganancias));
+  // Este era el error gordo: la mezcla dejaba la canción sin graves para siempre.
+  comprobar('y con los graves puestos', despues.graves.every(g => g === 0), `graves ${JSON.stringify(despues.graves)}`);
+  comprobar('y con los medios puestos', despues.medios.every(g => g === 0), `medios ${JSON.stringify(despues.medios)}`);
+  comprobar('y a volumen entero', despues.ganancias.every(g => g === 1), JSON.stringify(despues.ganancias));
+  comprobar('la pantalla deja de decir que está mezclando', !despues.enCurso && !despues.mezclando);
+}
 
 clearTimeout(guardia);
 ws.close();

@@ -359,10 +359,13 @@ select.sort:hover{border-color:var(--muted-2)}
 .btn.grande{height:44px; padding:0 24px; font-size:15px; margin-top:20px}
 .btn.pequeno{height:28px; padding:0 10px; font-size:12.5px; align-self:flex-start}
 .mezcla-en-curso{margin-top:20px}
-.mezcla-en-curso .barra{position:relative; height:8px; border-radius:99px; background:var(--panel-3); overflow:hidden}
-.mezcla-en-curso .marca-cambio{position:absolute; top:0; width:2px; height:100%; background:var(--panel); opacity:.85}
-.mezcla-en-curso .barra span{display:block; height:100%; width:0; background:var(--accent); transition:width .25s linear}
-.mezcla-en-curso .barra span.tras-cambio{background:var(--signal)}
+.mezcla-en-curso .rejilla-compases{display:flex; gap:3px; height:12px}
+.mezcla-en-curso .rejilla-compases i{flex:1; border-radius:3px; background:var(--panel-3); transition:background .12s linear}
+.mezcla-en-curso .rejilla-compases i.pasado{background:var(--accent)}
+.mezcla-en-curso .rejilla-compases i.ahora{background:var(--accent); opacity:.55}
+.mezcla-en-curso .rejilla-compases i.cambio{box-shadow:inset 0 0 0 2px var(--signal)}
+.mezcla-en-curso .rejilla-compases i.cambio.pasado{background:var(--signal)}
+.botonera-mezcla{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
 .mezcla-en-curso p{margin:8px 0 0; font-size:13px; color:var(--muted)}
 .platos-vivos{display:grid; gap:8px; margin-top:12px}
 .plato-vivo{display:flex; align-items:center; gap:12px; padding:8px 12px; border:1px solid var(--line); border-radius:var(--r-sm); background:var(--panel)}
