@@ -10,10 +10,21 @@ esquemas propios** para servir la interfaz y el audio.
 
 ## Cómo se ejecuta
 
-**Con un instalador**, que es como se usa a diario. No hace falta tener nada de
-programación instalado: en la pestaña **Actions › Instaladores › Run workflow**
-de este repositorio se construyen los tres sistemas a la vez, y al terminar
-cuelgan de esa misma ejecución, en *Artifacts*:
+**Descárgalo de [la página de versiones](https://github.com/Up2you-dev/pletina/releases)**,
+que es donde vive lo publicado. No hace falta tener nada de programación
+instalado ni identificarse: cada archivo se baja de uno en uno.
+
+| Archivo | Qué es |
+|---|---|
+| `Pletina Setup X.Y.Z.exe` | Instalador de Windows. Doble clic y listo |
+| `Pletina X.Y.Z.exe` | Portable: no instala nada, pesa la mitad |
+| `Pletina-X.Y.Z-win.zip` | La carpeta suelta, para descomprimir donde quieras |
+
+Para **construir una versión nueva**: pestaña *Actions › Instaladores › Run
+workflow*, se elige el sistema y, si se deja marcada la casilla de publicar, los
+archivos acaban solos en la página de versiones con las notas del registro de
+cambios. Una etiqueta `vX.Y.Z` hace lo mismo con los tres sistemas a la vez.
+Los artefactos de la ejecución siguen ahí para lo que no se publica:
 
 | Artefacto | Qué trae |
 |---|---|
