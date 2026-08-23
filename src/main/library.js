@@ -402,6 +402,9 @@ export function createLibrary({ store, covers, escritor = escritorPorDefecto, on
         entrada: cero(rejilla.entrada),
         porBombo: Boolean(rejilla.porBombo),
         tiemposPorCompas: Math.min(8, Math.max(2, Math.round(Number(rejilla.tiemposPorCompas) || 4))),
+        // Sin versión son rejillas viejas, de cuando el tempo se estimaba: se
+        // guardan tal cual, pero la aplicación las tratará como pendientes.
+        version: Math.max(1, Math.round(Number(rejilla.version) || 1)),
       } : null;
       track.analisis = {
         bpmConfianza: Number(datos.bpmConfianza) || 0,

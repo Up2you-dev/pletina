@@ -21,6 +21,21 @@ export const GRAVE_MAX = 150;
 /** Muestras por marco de envolvente. A 11 kHz son 5,8 ms de resolución. */
 export const SALTO = 64;
 
+/**
+ * Versión de la rejilla.
+ *
+ * Las rejillas de la versión 1 salían de un tempo estimado y de una envolvente
+ * que adelantaba los golpes: valen para saber el tempo aproximado, no para
+ * pinchar. Se marcan como no analizadas para que la aplicación ofrezca
+ * rehacerlas en vez de mezclar con datos que no cuadran.
+ */
+export const REJILLA_VERSION = 2;
+
+/** ¿Esta rejilla sirve para mezclar? */
+export const rejillaVigente = (rejilla) => Boolean(
+  rejilla && Number(rejilla.bpm) > 0 && Number(rejilla.version || 1) >= REJILLA_VERSION,
+);
+
 /* ---------------------------------------------------------- envolventes */
 
 /**
@@ -327,6 +342,7 @@ export function rejillaCompleta(muestras, tasa, bpmAprox, { desde = 0, tiemposPo
     porBombo,
     // Solo tiene sentido si se ha mirado la canción desde el principio.
     entrada: desde === 0 ? primerSonido(energia, tasaEnv) : 0,
+    version: REJILLA_VERSION,
   };
 }
 

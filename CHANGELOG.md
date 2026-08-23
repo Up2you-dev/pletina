@@ -78,9 +78,19 @@ exactamente cuándo.
   pedida.
 - **Un solo interruptor de tempo.** El bpm que se enseña abajo es el que suena.
 
+### Al actualizar
+
+- **Las rejillas de la 3.0.0 se marcan como pendientes.** Salían de un tempo
+  estimado y de una envolvente que adelantaba los golpes: valen para saber el
+  tempo aproximado, no para pinchar. La aplicación las cuenta como sin analizar
+  y ofrece rehacerlas, en vez de mezclar con datos que no cuadran.
+- **El ajuste de tempo de una mezcla ya no se queda puesto.** Al elegir una
+  canción a mano se vuelve a su velocidad; el tempo que hayas puesto tú en el
+  panel de sonido se respeta.
+
 ### Por dentro
 
-- 224 pruebas (`npm test`), 26 de ellas sobre la rejilla, con una que fabrica
+- 225 pruebas (`npm test`), 26 de ellas sobre la rejilla, con una que fabrica
   cuatro minutos de música y comprueba que el último golpe sigue cayendo donde
   debe.
 - `npm run test:mezcla` mide ahora también el análisis en lote, el desfase entre

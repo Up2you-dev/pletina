@@ -103,7 +103,7 @@ export function estadoDePlatos() {
  * con él el motor hace estirado de tiempo real (la canción va más rápida y
  * sigue en la misma tonalidad); sin él sube el tono como un vinilo.
  */
-let tempo = { velocidad: 1, preservarTono: true };
+let tempo = { velocidad: 1, preservarTono: true, origen: 'manual' };
 
 function aplicarTempo(p) {
   if (!p?.el) return;
@@ -118,6 +118,7 @@ export function ajustarVelocidad(velocidad, preservarTono = tempo.preservarTono)
   tempo = {
     velocidad: Math.max(0.5, Math.min(2, Number(velocidad) || 1)),
     preservarTono: Boolean(preservarTono),
+    origen: 'manual',
   };
   aplicarTempo(plato());
   return tempoActual();
@@ -179,6 +180,10 @@ export function load(id, { play = true, position = 0 } = {}) {
   state.currentId = id;
   avisadoFinal = false;
   fijarGanancia(actual, 1);
+  // Elegir una canción a mano cierra la cadena de la mezcla: el ajuste de tempo
+  // que puso el mezclador para encajar dos canciones no tiene por qué quedarse
+  // puesto para siempre. El que ha puesto una persona sí se respeta.
+  if (tempo.origen === 'mezcla') tempo = { velocidad: 1, preservarTono: tempo.preservarTono, origen: 'manual' };
   actual.el.src = window.pletina.media.track(id);
   // Después del `src`, nunca antes: asignar la fuente reinicia el elemento y
   // con él la velocidad. El tempo elegido se vuelve a poner encima.
@@ -312,7 +317,7 @@ export function mezclar(id, plan, { estirarTiempo = true } = {}) {
   // Se repite con los metadatos por si la carga vuelve a pisarlo.
   // La mezcla manda sobre el tempo: a partir de aquí el reproductor va al tempo
   // que ha decidido el plan, y el panel de sonido lo refleja.
-  tempo = { velocidad: velEntrante, preservarTono: Boolean(estirarTiempo) };
+  tempo = { velocidad: velEntrante, preservarTono: Boolean(estirarTiempo), origen: 'mezcla' };
   const preparar = () => aplicarTempo(entrante);
   preparar();
   entrante.el.addEventListener('loadedmetadata', preparar, { once: true });

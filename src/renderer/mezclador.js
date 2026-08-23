@@ -1,4 +1,5 @@
 import { describirPlan, planDeMezcla } from '../shared/mezcla.js';
+import { rejillaVigente } from '../shared/beats.js';
 import { advance } from '../shared/queue.js';
 import { getTrack, state } from './state.js';
 import * as player from './player.js';
@@ -40,7 +41,10 @@ function avisar() {
 export function fichaDeMezcla(id) {
   const track = getTrack(id);
   if (!track) return null;
-  const rejilla = track.rejilla ?? null;
+  // Una rejilla vieja no se usa a medias: o sirve para pinchar o no está. Si se
+  // usara, el mezclador diría que no está analizada y pincharía igualmente con
+  // los datos malos.
+  const rejilla = rejillaVigente(track.rejilla) ? track.rejilla : null;
   return {
     id,
     titulo: track.title,
@@ -55,7 +59,7 @@ export function fichaDeMezcla(id) {
     tonalidad: track.tonalidad || '',
     rejilla,
     conFrase: (rejilla?.fuerzaFrase ?? 0) > 0,
-    analizada: Boolean((rejilla?.bpm || track.bpm) && rejilla),
+    analizada: rejillaVigente(rejilla),
   };
 }
 

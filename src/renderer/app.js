@@ -32,6 +32,7 @@ import { bindStage, refreshRows, renderStage, renderStageHead, scrollToCurrent }
 import { bindQueue, renderQueue } from './ui/queue.js';
 import { abrirSonido, bindSonido, cerrarSonido } from './ui/sonido.js';
 import { alternarVisualizador, montarVisualizador } from './ui/visualizador.js';
+import { rejillaVigente } from '../shared/beats.js';
 import { analizarPista } from './analisis.js';
 import { analizandoLote, analizarLote, cancelarLote } from './analisis-lote.js';
 import {
@@ -409,10 +410,7 @@ const actions = {
       forzar,
       analizar: (id) => analizarPista(id, motor.contexto),
       guardar: (id, resultado) => api.track.analysis(id, resultado),
-      yaHecha: (id) => {
-        const track = getTrack(id);
-        return Boolean(track?.bpm && track?.rejilla);
-      },
+      yaHecha: (id) => rejillaVigente(getTrack(id)?.rejilla),
       titulo: (id) => getTrack(id)?.title ?? '',
       alProgreso: (estado) => {
         if (!estado) {
@@ -745,7 +743,7 @@ const actions = {
           ? tracks.filter((track) => state.selection.has(track.id))
           : tracks;
         if (!objetivo.length) return;
-        const faltan = objetivo.filter((track) => !(track.bpm && track.rejilla));
+        const faltan = objetivo.filter((track) => !rejillaVigente(track.rejilla));
         if (!faltan.length) {
           const rehacer = await dialog({
             title: `¿Volver a analizar ${plural(objetivo.length, 'canción', 'canciones')}?`,

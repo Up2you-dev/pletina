@@ -561,6 +561,15 @@ describe('análisis y rejilla', () => {
     expect(track.rejilla.bpm).toBeCloseTo(127.312, 3);
   });
 
+  it('marca la versión de la rejilla, para saber cuáles hay que rehacer', () => {
+    const id = library.listTracks()[0].id;
+    library.setAnalysis(id, { bpm: 128, rejilla: { ...rejilla, version: 2 } });
+    expect(library.listTracks()[0].rejilla.version).toBe(2);
+    // Las de antes no traían versión: cuentan como la 1.
+    library.setAnalysis(id, { bpm: 128, rejilla });
+    expect(library.listTracks()[0].rejilla.version).toBe(1);
+  });
+
   it('sin rejilla no inventa una', () => {
     const id = library.listTracks()[0].id;
     library.setAnalysis(id, { bpm: 120 });

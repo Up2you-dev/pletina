@@ -1,5 +1,6 @@
 import { $, $$, coverHtml, esc, gradientFor, popover } from './dom.js';
 import { ICO } from './icons.js';
+import { rejillaVigente } from '../../shared/beats.js';
 import { formatTime, formatTotal, formatWhen, plural } from '../../shared/format.js';
 import { ORDEN_ALBUMES, ORDEN_ARTISTAS, SORT_KEYS } from '../../shared/sorting.js';
 import { pintarMezclador } from './vista-mezclador.js';
@@ -153,7 +154,7 @@ function toolbarHtml(tracks) {
     const objetivo = state.selection.size > 1
       ? tracks.filter((track) => state.selection.has(track.id))
       : tracks;
-    const faltan = objetivo.filter((track) => !(track.bpm && track.rejilla)).length;
+    const faltan = objetivo.filter((track) => !rejillaVigente(track.rejilla)).length;
     parts.push(`<button class="btn" data-tool="analizar" title="Tempo, tonalidad y rejilla de compases">
       ${ICO.waves}${faltan ? `Analizar ${faltan}` : 'Volver a analizar'}</button>`);
   }
