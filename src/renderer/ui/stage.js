@@ -350,6 +350,21 @@ export function trackMenu(anchor, id) {
   items.push({ type: 'sep' });
 
   items.push({
+    key: 'edit',
+    label: many ? `Corregir la información de ${ids.length} canciones…` : 'Corregir la información…',
+    icon: ICO.pencil,
+    run: () => actions.editTags(ids),
+  });
+  if (ids.some((each) => getTrack(each)?.edits)) {
+    items.push({
+      key: 'restore',
+      label: 'Volver a las etiquetas del archivo',
+      icon: ICO.refresh,
+      run: () => actions.restoreTags(ids),
+    });
+  }
+  items.push({ type: 'sep' });
+  items.push({
     key: 'fav',
     label: track.favorite && !many ? 'Quitar de favoritos' : 'Marcar como favorita',
     icon: ICO.heart,

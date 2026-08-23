@@ -64,6 +64,7 @@ export function renderQueue() {
       <h3>A continuación</h3>
       <div class="sub">${pendingCount ? `${plural(pendingCount, 'canción', 'canciones')} · ${formatTime(remaining)}` : 'La cola se ha terminado'}</div>
       <div class="acts">
+        ${pendingCount || current ? `<button class="btn btn-ghost" data-qtool="saveAsPlaylist">${ICO.list}Guardar como lista</button>` : ''}
         ${queue.manual.length ? `<button class="btn btn-ghost" data-qtool="clearManual">${ICO.x}Vaciar lo añadido a mano</button>` : ''}
         <button class="btn btn-ghost" data-qtool="close">Cerrar</button>
       </div>

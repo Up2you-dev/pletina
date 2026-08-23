@@ -73,6 +73,20 @@ export function buildMenu({ send, onAddFolder, onAddFiles, onImportPlaylist, onR
         { label: 'Orden aleatorio', accelerator: 'CmdOrCtrl+S', click: command('toggle:shuffle') },
         { label: 'Repetir', accelerator: 'CmdOrCtrl+R', click: command('toggle:repeat') },
         { label: 'Volumen constante (ReplayGain)', click: command('toggle:normalize') },
+        { type: 'separator' },
+        {
+          label: 'Temporizador de apagado',
+          submenu: [
+            { label: 'Al terminar esta canción', click: command('sleep:set', { minutos: 'cancion' }) },
+            { type: 'separator' },
+            { label: 'En 15 minutos', click: command('sleep:set', { minutos: 15 }) },
+            { label: 'En 30 minutos', click: command('sleep:set', { minutos: 30 }) },
+            { label: 'En 45 minutos', click: command('sleep:set', { minutos: 45 }) },
+            { label: 'En 1 hora', click: command('sleep:set', { minutos: 60 }) },
+            { type: 'separator' },
+            { label: 'Desactivar', click: command('sleep:set', { minutos: 0 }) },
+          ],
+        },
       ],
     },
     {

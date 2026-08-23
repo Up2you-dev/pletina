@@ -211,8 +211,38 @@ function armSmokeTest(target) {
     problems.push(`did-fail-load ${code} ${description}`);
   });
 
+  /**
+   * El menú vive aquí y quien lo obedece vive en el renderizador; entre los dos
+   * solo hay una cadena de texto. Se pulsa una opción de verdad y se comprueba
+   * que la interfaz reacciona: si ese camino se rompe, el menú se abre, se pulsa
+   * y no pasa nada, que es un fallo mudo.
+   */
+  async function comprobarMenu() {
+    const buscar = (items, etiqueta) => {
+      for (const item of items) {
+        if (item.label === etiqueta) return item;
+        const dentro = item.submenu ? buscar(item.submenu.items, etiqueta) : null;
+        if (dentro) return dentro;
+      }
+      return null;
+    };
+    const opcion = buscar(Menu.getApplicationMenu()?.items ?? [], 'En 15 minutos');
+    if (!opcion) {
+      problems.push('el menú no tiene la opción del temporizador');
+      return;
+    }
+    opcion.click();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const visible = await mainWindow.webContents
+      .executeJavaScript('!document.querySelector("#sleep").hidden')
+      .catch(() => false);
+    if (!visible) problems.push('el menú no ha llegado a la interfaz (temporizador)');
+    else process.stdout.write('menú → interfaz: correcto\n');
+  }
+
   mainWindow.webContents.once('did-finish-load', () => {
     setTimeout(async () => {
+      await comprobarMenu();
       try {
         const image = await mainWindow.webContents.capturePage();
         await writeFile(target, image.toPNG());
@@ -373,6 +403,13 @@ function registerIpc() {
     return library.patchTrack(id, allowed);
   });
   handle('track:played', (id) => library.registerPlay(id));
+  // La lista blanca de campos vive en la biblioteca: aquí solo se comprueba la forma.
+  handle('tracks:edit', (ids, patch) => library.editTracks(
+    Array.isArray(ids) ? ids : [],
+    patch && typeof patch === 'object' ? patch : {},
+  ));
+  handle('tracks:restore', (ids) => library.restoreTags(Array.isArray(ids) ? ids : []));
+  handle('tracks:favorite', (ids, favorite) => library.setFavorite(Array.isArray(ids) ? ids : [], favorite));
 
   handle('playlist:create', (name, trackIds) => library.createPlaylist(name, trackIds));
   handle('playlist:update', (id, patch) => {

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -302,5 +302,113 @@ describe('M3U', () => {
     const result = await library.importPlaylist(target);
     expect(result.playlist.trackIds).toEqual(ids);
     expect(result.discovered).toBe(0);
+  });
+});
+
+describe('corregir etiquetas', () => {
+  const primera = () => library.listTracks()[0];
+
+  beforeEach(async () => {
+    await song('01 - Los Planetas - Segundo premio.wav');
+    await library.addFolders([musica]);
+  });
+
+  it('cambia el título y el álbum sin tocar el archivo', async () => {
+    const antes = primera();
+    const tamanoEnDisco = (await stat(antes.path)).size;
+
+    library.editTracks([antes.id], { title: 'Segundo premio', album: 'Una semana en el motor de un autobús' });
+
+    const despues = primera();
+    expect(despues.title).toBe('Segundo premio');
+    expect(despues.album).toBe('Una semana en el motor de un autobús');
+    expect((await stat(despues.path)).size).toBe(tamanoEnDisco);
+  });
+
+  it('la corrección sobrevive a un reanálisis que vuelve a leer el archivo', async () => {
+    const track = primera();
+    library.editTracks([track.id], { artist: 'Los Planetas', album: 'Una semana' });
+
+    // Se fuerza la relectura cambiando el archivo.
+    await writeFile(track.path, 'contenido distinto para forzar la relectura');
+    await library.rescan();
+
+    const despues = primera();
+    expect(despues.artist).toBe('Los Planetas');
+    expect(despues.album).toBe('Una semana');
+    expect(despues.edits).toEqual({ artist: 'Los Planetas', album: 'Una semana' });
+  });
+
+  it('corrige varias canciones de una vez', async () => {
+    await song('02 - otra.wav');
+    await library.rescan();
+    const ids = library.listTracks().map((t) => t.id);
+
+    const resultado = library.editTracks(ids, { album: 'Recopilatorio' });
+
+    expect(resultado.edited).toBe(2);
+    expect(library.listTracks().every((t) => t.album === 'Recopilatorio')).toBe(true);
+  });
+
+  it('ignora un título o un artista en blanco, que dejarían la fila muda', () => {
+    const track = primera();
+    const titulo = track.title;
+    library.editTracks([track.id], { title: '   ', artist: '', album: '' });
+
+    const despues = primera();
+    expect(despues.title).toBe(titulo);
+    expect(despues.artist).not.toBe('');
+    // El álbum sí se puede vaciar: es una respuesta legítima.
+    expect(despues.album).toBe('');
+  });
+
+  it('normaliza los campos numéricos', () => {
+    const track = primera();
+    library.editTracks([track.id], { year: '1998', trackNo: 'x', discNo: -3 });
+
+    const despues = primera();
+    expect(despues.year).toBe(1998);
+    expect(despues.trackNo).toBe(0);
+    expect(despues.discNo).toBe(0);
+  });
+
+  it('descarta campos que no son editables', () => {
+    const track = primera();
+    library.editTracks([track.id], { duration: 9999, path: '/otro/sitio.mp3' });
+
+    const despues = primera();
+    expect(despues.path).toBe(track.path);
+    expect(despues.duration).not.toBe(9999);
+  });
+
+  it('restaurar vuelve a las etiquetas del archivo', async () => {
+    const track = primera();
+    const original = track.title;
+    library.editTracks([track.id], { title: 'Inventado' });
+    expect(primera().title).toBe('Inventado');
+
+    const resultado = await library.restoreTags([track.id]);
+
+    expect(resultado.restored).toBe(1);
+    expect(primera().title).toBe(original);
+    expect(primera().edits).toBeNull();
+  });
+
+  it('restaurar no se inventa trabajo si no había correcciones', async () => {
+    expect((await library.restoreTags([primera().id])).restored).toBe(0);
+  });
+
+  it('si el archivo no se puede leer, la corrección se conserva', async () => {
+    const track = primera();
+    library.editTracks([track.id], { title: 'Nombre corregido' });
+    await rm(track.path);
+
+    const resultado = await library.restoreTags([track.id]);
+
+    expect(resultado.restored).toBe(0);
+    expect(resultado.unavailable).toBe(1);
+    // Ni se pierde la corrección ni se queda el archivo sin nombre.
+    expect(primera().title).toBe('Nombre corregido');
+    expect(primera().edits).toEqual({ title: 'Nombre corregido' });
   });
 });

@@ -38,6 +38,10 @@ contextBridge.exposeInMainWorld('pletina', {
   track: {
     patch: (id, patch) => invoke('track:patch', id, patch),
     played: (id) => invoke('track:played', id),
+    /** Corrige las etiquetas dentro de Pletina; el archivo del disco no se toca. */
+    edit: (ids, patch) => invoke('tracks:edit', ids, patch),
+    restore: (ids) => invoke('tracks:restore', ids),
+    favorite: (ids, favorite) => invoke('tracks:favorite', ids, favorite),
   },
 
   playlists: {
@@ -68,16 +72,32 @@ contextBridge.exposeInMainWorld('pletina', {
     cover: (coverId) => `pletina-media://cover/${encodeURIComponent(coverId)}`,
   },
 
-  /** Rutas reales de lo que se suelta en la ventana (Electron ya no expone `File.path`). */
-  pathsFromDrop: (fileList) => Array.from(fileList || [])
-    .map((file) => {
-      try {
-        return webUtils.getPathForFile(file);
-      } catch {
-        return '';
-      }
-    })
-    .filter(Boolean),
+  /**
+   * Rutas reales de lo que se suelta en la ventana (Electron ya no expone
+   * `File.path`).
+   *
+   * Ojo con lo que se pasa: un `FileList` NO sobrevive al puente de contextos
+   * —cruza como un proxy sin iterador y `Array.from` devuelve una lista vacía—,
+   * así que quien llama tiene que esparcirlo en un array normal. Aquí se acepta
+   * cualquiera de las dos formas y se avisa por consola si llega vacío, que es
+   * como este error estuvo escondido: fallaba sin decir nada.
+   */
+  pathsFromDrop: (archivos) => {
+    const lista = Array.isArray(archivos) ? archivos : Array.from(archivos || []);
+    if (!lista.length) {
+      console.warn('[pletina] no ha llegado ningún archivo al puente; ¿se ha pasado un FileList sin esparcir?');
+      return [];
+    }
+    return lista
+      .map((file) => {
+        try {
+          return webUtils.getPathForFile(file);
+        } catch {
+          return '';
+        }
+      })
+      .filter(Boolean);
+  },
 
   on: {
     command: subscribe('command'),

@@ -41,6 +41,12 @@ const api = window.pletina;
 let appInfo = { version: '', electron: '', dataDir: '', dark: false };
 let countedFor = null;
 
+/**
+ * Temporizador de apagado. Guarda el instante en que hay que bajar la música, o
+ * la marca `'cancion'` para parar cuando termine lo que está sonando.
+ */
+const dormir = { hasta: null, alTerminar: false, reloj: 0 };
+
 /* ------------------------------------------------------------- repintados */
 
 const renderAll = () => {
@@ -97,6 +103,10 @@ function playFromView(id) {
 }
 
 function next(auto = false) {
+  if (auto && dormir.alTerminar) {
+    apagar('Se acabó: buenas noches.');
+    return undefined;
+  }
   const result = advance(state.queue, { repeat: state.repeat, auto });
   state.queue = result.queue;
   if (result.restart) return player.restart();
@@ -139,6 +149,63 @@ function setShuffle(value) {
   }
   syncToggles(appInfo);
   renderQueue();
+}
+
+/* ------------------------------------------------------ temporizador */
+
+function pintarTemporizador() {
+  const chip = $('#sleep');
+  if (dormir.alTerminar) {
+    chip.hidden = false;
+    chip.textContent = '⏱ al terminar';
+    return;
+  }
+  if (!dormir.hasta) {
+    chip.hidden = true;
+    return;
+  }
+  const restan = Math.max(0, Math.round((dormir.hasta - Date.now()) / 60000));
+  chip.hidden = false;
+  chip.textContent = `⏱ ${restan || '<1'} min`;
+}
+
+function apagar(motivo) {
+  cancelarTemporizador();
+  player.pause();
+  toast(motivo);
+}
+
+function cancelarTemporizador({ avisar = false } = {}) {
+  dormir.hasta = null;
+  dormir.alTerminar = false;
+  if (dormir.reloj) {
+    clearInterval(dormir.reloj);
+    dormir.reloj = 0;
+  }
+  pintarTemporizador();
+  if (avisar) toast('Temporizador desactivado');
+}
+
+function programarTemporizador(minutos) {
+  if (minutos === 0) {
+    cancelarTemporizador({ avisar: true });
+    return;
+  }
+  if (minutos === 'cancion') {
+    cancelarTemporizador();
+    dormir.alTerminar = true;
+    pintarTemporizador();
+    toast('Se parará al terminar esta canción');
+    return;
+  }
+  cancelarTemporizador();
+  dormir.hasta = Date.now() + minutos * 60000;
+  dormir.reloj = setInterval(() => {
+    if (dormir.hasta && Date.now() >= dormir.hasta) apagar('Se acabó: buenas noches.');
+    else pintarTemporizador();
+  }, 15000);
+  pintarTemporizador();
+  toast(`La música se parará en ${minutos} minutos`);
 }
 
 /* --------------------------------------------------------------- acciones */
@@ -189,10 +256,9 @@ const actions = {
   async setFavorite(ids, value) {
     for (const id of ids) {
       const track = getTrack(id);
-      if (!track) continue;
-      track.favorite = value;
-      await api.track.patch(id, { favorite: value });
+      if (track) track.favorite = value;
     }
+    await api.track.favorite(ids, value);
     renderRail();
     if (state.view.type === 'favorites') renderStage();
     else refreshRows();
@@ -245,6 +311,75 @@ const actions = {
   },
 
   reveal: (id) => api.library.reveal(id),
+
+  /**
+   * Corregir etiquetas. Con una canción se editan todos los campos; con varias,
+   * solo los que se comparten, y lo que se deje en blanco no se toca —así se
+   * arregla el álbum de veinte canciones sin machacarles el título.
+   */
+  async editTags(ids) {
+    const varias = ids.length > 1;
+    const track = getTrack(ids[0]);
+    if (!track) return;
+    const comun = (campo) => {
+      const valores = new Set(ids.map((id) => String(getTrack(id)?.[campo] ?? '')));
+      return valores.size === 1 ? [...valores][0] : '';
+    };
+    const valor = (campo) => (varias ? comun(campo) : String(track[campo] ?? ''));
+    const numero = (campo) => (varias ? '' : String(track[campo] || '') || '');
+    const marcador = varias ? '(sin cambios)' : '';
+
+    const campos = varias
+      ? [
+        { name: 'artist', label: 'Artista', value: valor('artist'), placeholder: marcador },
+        { name: 'albumArtist', label: 'Artista del álbum', value: valor('albumArtist'), placeholder: marcador },
+        { name: 'album', label: 'Álbum', value: valor('album'), placeholder: marcador },
+        { name: 'genre', label: 'Género', value: valor('genre'), placeholder: marcador, ancho: 'medio' },
+        { name: 'year', label: 'Año', value: numero('year'), placeholder: marcador, type: 'numero', ancho: 'medio' },
+      ]
+      : [
+        { name: 'title', label: 'Título', value: valor('title') },
+        { name: 'artist', label: 'Artista', value: valor('artist') },
+        { name: 'albumArtist', label: 'Artista del álbum', value: valor('albumArtist') },
+        { name: 'album', label: 'Álbum', value: valor('album') },
+        { name: 'genre', label: 'Género', value: valor('genre'), ancho: 'medio' },
+        { name: 'year', label: 'Año', value: numero('year'), type: 'numero', ancho: 'medio' },
+        { name: 'trackNo', label: 'Pista', value: numero('trackNo'), type: 'numero', ancho: 'medio' },
+        { name: 'discNo', label: 'Disco', value: numero('discNo'), type: 'numero', ancho: 'medio' },
+      ];
+
+    const valores = await dialog({
+      title: varias ? `Corregir ${plural(ids.length, 'canción', 'canciones')}` : 'Corregir la información',
+      message: varias
+        ? 'Lo que dejes en blanco se queda como está. Los archivos de tu disco no se tocan: la corrección vive en Pletina.'
+        : 'Los archivos de tu disco no se tocan: la corrección vive en Pletina y sobrevive a los reanálisis.',
+      fields: campos,
+      ok: 'Guardar',
+    });
+    if (!valores) return;
+
+    // Con varias canciones, un campo vacío significa «no lo toques».
+    const patch = varias
+      ? Object.fromEntries(Object.entries(valores).filter(([, v]) => v !== ''))
+      : valores;
+    if (!Object.keys(patch).length) return;
+
+    const resultado = await api.track.edit(ids, patch);
+    await refreshLibrary();
+    renderNowPlaying();
+    toast(resultado.edited > 1 ? `${plural(resultado.edited, 'canción corregida', 'canciones corregidas')}` : 'Información corregida');
+  },
+
+  async restoreTags(ids) {
+    const resultado = await api.track.restore(ids);
+    await refreshLibrary();
+    renderNowPlaying();
+    if (resultado.unavailable) {
+      toast('No he podido leer el archivo: la corrección se queda como está.');
+      return;
+    }
+    toast(resultado.restored ? 'Etiquetas del archivo recuperadas' : 'No había nada que deshacer');
+  },
 
   goToAlbum(track) {
     const key = `${normalize(track.albumArtist || track.artist)} ${normalize(track.album || 'Sin álbum')}`;
@@ -488,6 +623,20 @@ const queueActions = {
     state.queue = { ...state.queue, manual: [] };
     renderQueue();
   },
+  /** Una sesión de escucha bien armada merece quedarse. */
+  saveAsPlaylist() {
+    const { queue } = state;
+    const ids = [...new Set([
+      ...(state.currentId ? [state.currentId] : []),
+      ...queue.manual,
+      ...queue.order.slice(queue.index + 1),
+    ])].filter((id) => state.byId.has(id));
+    if (!ids.length) {
+      toast('La cola está vacía.');
+      return;
+    }
+    withPlaylistPrompt(ids);
+  },
   dropManual(index) {
     state.queue = dropManual(state.queue, index);
     renderQueue();
@@ -644,7 +793,8 @@ function onKeyDown(event) {
 
 /* ------------------------------------------------------- órdenes del menú */
 
-function onCommand({ name, paths }) {
+function onCommand(payload) {
+  const { name, paths } = payload;
   switch (name) {
     case 'play:toggle': togglePlay(); break;
     case 'play:next': next(false); break;
@@ -665,6 +815,7 @@ function onCommand({ name, paths }) {
       persist({ normalize: state.normalize });
       toast(state.normalize ? 'Volumen constante activado' : 'Volumen constante desactivado');
       break;
+    case 'sleep:set': programarTemporizador(payload?.minutos ?? 0); break;
     case 'focus:search': $('#q').focus(); break;
     case 'view:library': actions.navigate({ type: 'library' }); break;
     case 'view:albums': actions.navigate({ type: 'albums' }); break;
@@ -712,30 +863,47 @@ function showProgress(payload) {
 function bindDrop() {
   const dropEl = $('#drop');
   let depth = 0;
-  const hasFiles = (dt) => Array.from(dt?.types || []).includes('Files');
+  const tiposDe = (dt) => Array.from(dt?.types || []);
+  /** Un arrastre nuestro (filas hacia una lista) no es una importación. */
+  const esInterno = (dt) => tiposDe(dt).includes('application/x-pletina-tracks');
+  /** Para el cartel: durante el arrastre el navegador solo promete «Files». */
+  const traeArchivos = (dt) => tiposDe(dt).includes('Files');
 
   window.addEventListener('dragenter', (event) => {
-    if (!hasFiles(event.dataTransfer)) return;
+    if (esInterno(event.dataTransfer) || !traeArchivos(event.dataTransfer)) return;
     depth += 1;
     dropEl.classList.add('show');
   });
   window.addEventListener('dragover', (event) => {
-    if (!hasFiles(event.dataTransfer)) return;
+    // Sin este preventDefault el navegador se queda el arrastre y el `drop`
+    // no llega nunca. Se hace para todo lo que no sea un arrastre nuestro:
+    // condicionarlo a `types` deja la función a merced de cómo el sistema
+    // rellene esa lista, y ahí es donde se rompía.
+    if (esInterno(event.dataTransfer)) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = 'copy';
   });
   window.addEventListener('dragleave', (event) => {
-    if (!hasFiles(event.dataTransfer)) return;
+    if (esInterno(event.dataTransfer) || !traeArchivos(event.dataTransfer)) return;
     depth = Math.max(0, depth - 1);
     if (!depth) dropEl.classList.remove('show');
   });
   window.addEventListener('drop', async (event) => {
-    if (!hasFiles(event.dataTransfer)) return;
-    event.preventDefault();
+    if (esInterno(event.dataTransfer)) return;
     depth = 0;
     dropEl.classList.remove('show');
-    const paths = api.pathsFromDrop(event.dataTransfer.files);
-    if (!paths.length) return;
+    // El `FileList` se esparce AQUÍ: al otro lado del puente de contextos
+    // llegaría como un proxy sin iterador y sin una sola ruta dentro.
+    const archivos = [...(event.dataTransfer?.files ?? [])];
+    // Sin archivos no era una importación —arrastrar texto al buscador, por
+    // ejemplo—: se deja pasar en vez de tragarse el evento.
+    if (!archivos.length) return;
+    event.preventDefault();
+    const paths = api.pathsFromDrop(archivos);
+    if (!paths.length) {
+      toast('No he podido leer lo que has soltado.');
+      return;
+    }
     const summary = await api.library.addPaths(paths);
     if (!summary.added) toast('No he encontrado música nueva ahí.');
   });
@@ -830,6 +998,7 @@ async function boot() {
     ]);
   });
   $('#chip-stop').addEventListener('click', () => api.library.stopScan());
+  $('#sleep').addEventListener('click', () => cancelarTemporizador({ avisar: true }));
   $('#btn-menu').addEventListener('click', (event) => {
     const rect = event.currentTarget.getBoundingClientRect();
     api.app.menu(rect.left, rect.bottom);

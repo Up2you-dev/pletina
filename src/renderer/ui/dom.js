@@ -113,9 +113,13 @@ export const isDialogOpen = () => dialogDepth > 0;
 
 /**
  * Diálogo modal propio (el nativo se reserva para lo irreversible, como la
- * papelera). Devuelve el texto escrito, `true`/`false` o `null` si se cancela.
+ * papelera).
+ *
+ * Devuelve, según cómo se le llame: el texto escrito (`input`), un objeto con
+ * los valores (`fields`), `true`/`false` en una confirmación, o `null` si se
+ * cancela.
  */
-export function dialog({ title, message, input, value = '', ok = 'Aceptar', danger = false }) {
+export function dialog({ title, message, input, fields, value = '', ok = 'Aceptar', danger = false }) {
   return new Promise((resolve) => {
     dialogDepth += 1;
     const veil = document.createElement('div');
@@ -124,6 +128,13 @@ export function dialog({ title, message, input, value = '', ok = 'Aceptar', dang
       <h3>${esc(title)}</h3>
       ${message ? `<p>${esc(message)}</p>` : ''}
       ${input ? `<input type="text" aria-label="${esc(input)}" placeholder="${esc(input)}" value="${esc(value)}">` : ''}
+      ${fields ? `<div class="campos">${fields.map((campo) => `<div class="campo${campo.ancho === 'medio' ? ' medio' : ''}">
+        <label for="campo-${esc(campo.name)}">${esc(campo.label)}</label>
+        <input id="campo-${esc(campo.name)}" name="${esc(campo.name)}" type="${campo.type === 'numero' ? 'number' : 'text'}"
+          ${campo.type === 'numero' ? 'min="0" step="1"' : ''}
+          value="${esc(campo.value ?? '')}" placeholder="${esc(campo.placeholder ?? '')}"
+          autocomplete="off" spellcheck="false">
+      </div>`).join('')}</div>` : ''}
       <div class="modal-actions">
         <button class="btn" data-x="cancel">Cancelar</button>
         <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-x="ok">${esc(ok)}</button>
@@ -137,30 +148,41 @@ export function dialog({ title, message, input, value = '', ok = 'Aceptar', dang
       veil.querySelector('[data-x="ok"]').focus();
     }
 
+    /** Lo escrito en el formulario, campo a campo. */
+    const valores = () => Object.fromEntries(
+      [...veil.querySelectorAll('.campo input')].map((el) => [el.name, el.value.trim()]),
+    );
+
     const done = (result) => {
       dialogDepth -= 1;
       veil.remove();
       document.removeEventListener('keydown', onKey, true);
       resolve(result);
     };
+    const cancelado = () => (input || fields ? null : false);
+    const aceptado = () => {
+      if (fields) return valores();
+      return input ? field.value.trim() || null : true;
+    };
+
     function onKey(event) {
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
-        done(input ? null : false);
+        done(cancelado());
       }
-      if (event.key === 'Enter' && input) {
+      if (event.key === 'Enter' && (input || fields)) {
         event.preventDefault();
         event.stopPropagation();
-        done(field.value.trim() || null);
+        done(aceptado());
       }
     }
     veil.addEventListener('click', (event) => {
-      if (event.target === veil) return done(input ? null : false);
+      if (event.target === veil) return done(cancelado());
       const button = event.target.closest('[data-x]');
       if (!button) return;
-      if (button.dataset.x === 'cancel') return done(input ? null : false);
-      return done(input ? field.value.trim() || null : true);
+      if (button.dataset.x === 'cancel') return done(cancelado());
+      return done(aceptado());
     });
     document.addEventListener('keydown', onKey, true);
   });

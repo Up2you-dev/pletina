@@ -1,7 +1,7 @@
 {
   "name": "pletina",
   "productName": "Pletina",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Reproductor de música local de escritorio: tu biblioteca en tu disco, sin nube y sin cuentas",
   "author": {
@@ -27,13 +27,14 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "icons": "node build/make-icons.mjs",
-    "verify": "npm run lint && npm test && npm run smoke",
+    "verify": "npm run lint && npm test && npm run smoke && npm run test:arrastre",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "dist:mac": "electron-builder --mac",
     "dist:win": "electron-builder --win",
     "dist:linux": "electron-builder --linux",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "test:arrastre": "node scripts/prueba-arrastre.mjs"
   },
   "dependencies": {
     "music-metadata": "^11.15.0"

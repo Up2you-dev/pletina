@@ -18,7 +18,8 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm test
-      # Levanta la aplicación de verdad y falla si el renderizador escupe un
-      # solo error por consola. El script usa xvfb-run solo cuando no hay
-      # escritorio, que es justo el caso del ejecutor.
+      # Levantan la aplicación de verdad y fallan si el renderizador escupe un
+      # solo error por consola o si soltar un archivo no lo importa. Los scripts
+      # usan xvfb-run solo cuando no hay escritorio, que es el caso del ejecutor.
       - run: npm run smoke
+      - run: npm run test:arrastre

@@ -91,6 +91,10 @@ export function createLibrary({ store, covers, onProgress = () => {} }) {
     if (!coverId) coverId = await covers.fromFolder(path.dirname(filePath));
     return {
       ...meta,
+      // Lo que el usuario corrigió a mano gana a lo que diga la etiqueta, y
+      // sigue ganando después de volver a leer el archivo.
+      ...(previous?.edits ?? {}),
+      edits: previous?.edits ?? null,
       // Lo que el usuario ha construido con el tiempo sobrevive a un reanálisis.
       id: trackIdFor(filePath),
       path: filePath,
@@ -268,6 +272,88 @@ export function createLibrary({ store, covers, onProgress = () => {} }) {
     });
   }
 
+  /**
+   * Campos que el usuario puede corregir. Las etiquetas de media internet están
+   * mal escritas y Pletina no reescribe los archivos —esa es su promesa—, así
+   * que la corrección vive en la biblioteca y se aplica encima de lo leído.
+   */
+  const CAMPOS_EDITABLES = ['title', 'artist', 'albumArtist', 'album', 'genre', 'year', 'trackNo', 'discNo'];
+  const NUMERICOS = new Set(['year', 'trackNo', 'discNo']);
+  // Un título o un artista en blanco dejarían la fila sin nada que enseñar.
+  const NO_VACIABLES = new Set(['title', 'artist']);
+
+  function limpiarEdicion(patch = {}) {
+    const limpio = {};
+    for (const campo of CAMPOS_EDITABLES) {
+      if (!(campo in patch)) continue;
+      if (NUMERICOS.has(campo)) {
+        const numero = Number.parseInt(patch[campo], 10);
+        limpio[campo] = Number.isFinite(numero) && numero > 0 ? numero : 0;
+        continue;
+      }
+      const texto = String(patch[campo] ?? '').trim().slice(0, 300);
+      if (!texto && NO_VACIABLES.has(campo)) continue;
+      limpio[campo] = texto;
+    }
+    return limpio;
+  }
+
+  function editTracks(ids, patch) {
+    const cambios = limpiarEdicion(patch);
+    if (!Object.keys(cambios).length) return { edited: 0, campos: [] };
+    let edited = 0;
+    store.update((d) => {
+      for (const id of ids) {
+        const track = d.tracks[id];
+        if (!track) continue;
+        track.edits = { ...(track.edits ?? {}), ...cambios };
+        Object.assign(track, cambios);
+        edited += 1;
+      }
+    });
+    return { edited, campos: Object.keys(cambios) };
+  }
+
+  /**
+   * Deshace las correcciones y vuelve a leer las etiquetas del archivo.
+   *
+   * Si el archivo no se puede leer —disco desconectado— la corrección se
+   * conserva: quitarla dejaría el nombre inventado y sin manera de recuperar el
+   * de verdad.
+   */
+  async function restoreTags(ids) {
+    let restored = 0;
+    let unavailable = 0;
+    for (const id of ids) {
+      const track = tracks()[id];
+      if (!track?.edits) continue;
+      try {
+        const stats = await stat(track.path);
+        const fresco = await buildTrack(track.path, stats, track.folder, { ...track, edits: null });
+        store.update((d) => {
+          d.tracks[id] = fresco;
+        });
+        restored += 1;
+      } catch {
+        unavailable += 1;
+      }
+    }
+    return { restored, unavailable };
+  }
+
+  /** Marcar cien canciones no son cien viajes al proceso principal. */
+  function setFavorite(ids, favorite) {
+    let changed = 0;
+    store.update((d) => {
+      for (const id of ids) {
+        if (!d.tracks[id]) continue;
+        d.tracks[id].favorite = Boolean(favorite);
+        changed += 1;
+      }
+    });
+    return { changed, favorite: Boolean(favorite) };
+  }
+
   function registerPlay(id) {
     return patchTrack(id, {
       playCount: (tracks()[id]?.playCount ?? 0) + 1,
@@ -404,6 +490,9 @@ export function createLibrary({ store, covers, onProgress = () => {} }) {
     removeTracks,
     removeMissing,
     patchTrack,
+    editTracks,
+    restoreTags,
+    setFavorite,
     registerPlay,
     playlistById,
     createPlaylist,

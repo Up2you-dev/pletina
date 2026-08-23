@@ -1,0 +1,69 @@
+# Registro de cambios
+
+Las versiones siguen [SemVer](https://semver.org/lang/es/). Cada una se
+construye desde la pestaña *Actions* del repositorio; una etiqueta `v1.2.3`
+además publica los instaladores sueltos en la página de versiones.
+
+## 1.1.0 — 2026-08-23
+
+### Arreglado
+
+- **Arrastrar y soltar no importaba nada.** Un `FileList` no sobrevive al puente
+  de contextos de Electron: cruza como un proxy sin iterador, así que el preload
+  recibía una lista vacía y `getPathForFile` no tenía nada que resolver. La
+  aplicación se quedaba callada —ni error, ni aviso— y parecía que soltar
+  archivos simplemente no hacía nada. Ahora la lista se esparce en el
+  renderizador antes de cruzar, el preload acepta las dos formas y avisa si le
+  llega vacía, y soltar algo ilegible lo dice en pantalla.
+- **El `drop` dependía de que el sistema rellenara `dataTransfer.types`.** Si esa
+  lista venía vacía no se llamaba a `preventDefault` en `dragover` y el navegador
+  se quedaba el arrastre: el evento `drop` no llegaba nunca. Ya no se condiciona
+  la función a esa lista, solo el cartel de «suelta aquí».
+- Restaurar las etiquetas de un archivo que ya no se puede leer conservaba el
+  recuento pero borraba la corrección, dejando el nombre inventado y sin manera
+  de recuperar el bueno. Ahora se conserva y se avisa.
+- Marcar como favoritas cien canciones eran cien viajes al proceso principal;
+  ahora es uno.
+- «Nº de pista» se leía como «No de pista» en el formulario. Ahora pone «Pista».
+
+### Añadido
+
+- **Corregir la información de una canción.** Título, artista, artista del
+  álbum, álbum, género, año, pista y disco. Los archivos del disco no se tocan
+  —esa es la promesa de Pletina—: la corrección vive en la biblioteca, gana a lo
+  que diga la etiqueta y sobrevive a los reanálisis. Se puede deshacer con
+  *Volver a las etiquetas del archivo*.
+- **Corrección en lote.** Con varias canciones seleccionadas se editan solo los
+  campos que comparten, y lo que se deja en blanco no se toca: un álbum entero
+  mal etiquetado se arregla de una vez sin machacar los títulos.
+- **Temporizador de apagado** (menú *Reproducción*): a los 15, 30, 45 o 60
+  minutos, o al terminar la canción que suena. Mientras corre, la cuenta atrás
+  se ve en la barra inferior y se cancela pulsándola.
+- **Guardar la cola como lista**, desde la cabecera del panel de cola.
+
+### Por dentro
+
+- `npm run test:arrastre` levanta la aplicación de verdad, suelta un archivo real
+  sobre la ventana y comprueba que acaba en la biblioteca. Existe porque el error
+  de arriba vivía justo en la costura entre renderizador y preload, donde ni las
+  pruebas unitarias ni el arranque de humo podían verlo.
+- Nuevas pruebas de contrato entre procesos: cada orden del menú tiene quien la
+  atienda, cada canal del preload existe en el proceso principal y cada evento
+  que se envía tiene una suscripción. Una errata en esos nombres no rompe nada
+  visible —el menú se abre, se pulsa y no pasa nada—, y ahora se caza en CI.
+- De 93 a 106 pruebas.
+
+## 1.0.0 — 2026-08-23
+
+Primera versión: la maqueta web convertida en aplicación de escritorio.
+
+- Biblioteca por rutas, sin copiar la música a ningún sitio.
+- Esquemas propios `pletina://` y `pletina-media://`, este último con soporte de
+  `Range` para poder buscar dentro de una canción.
+- Etiquetas con music-metadata, carátulas cacheadas por hash y reescaladas.
+- Análisis incremental, ausencias marcadas y discos desconectados respetados.
+- Menú nativo, teclas de medios, «abrir con», papelera y tema del sistema.
+- Ventana integrada: barra de título propia en Windows y semáforos embutidos en
+  macOS.
+- Álbumes, artistas, favoritos, escuchado hace poco, listas, cola, selección
+  múltiple y M3U de ida y vuelta.

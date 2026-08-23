@@ -18,9 +18,9 @@ cuelgan de esa misma ejecución, en *Artifacts*:
 | Artefacto | Qué trae |
 |---|---|
 | **`pletina-windows-instalador`** | `Pletina Setup 1.0.0.exe`, el instalador de toda la vida (x64 y arm64) |
-| `pletina-windows-sin-instalar` | `Pletina 1.0.0.exe` portable y el `.zip` que se descomprime y se ejecuta |
-| `pletina-macos` | `Pletina-1.0.0-arm64.dmg` — abrir y arrastrar a Aplicaciones |
-| `pletina-linux` | `Pletina-1.0.0.AppImage` (`chmod +x` y doble clic) y el `.deb` |
+| `pletina-windows-sin-instalar` | `Pletina 1.1.0.exe` portable y el `.zip` que se descomprime y se ejecuta |
+| `pletina-macos` | `Pletina-1.1.0-arm64.dmg` — abrir y arrastrar a Aplicaciones |
+| `pletina-linux` | `Pletina-1.1.0.AppImage` (`chmod +x` y doble clic) y el `.deb` |
 
 Al lanzarlo a mano se elige un solo sistema —Windows por defecto— y se enciende
 una sola máquina. Publicar una etiqueta `v1.2.3` construye los tres y además
@@ -47,7 +47,7 @@ npm run dist:win     # y esto te deja el instalador en release\
 Y para lo demás:
 
 ```bash
-npm run verify       # lint + 93 pruebas + arranque real con captura
+npm run verify       # lint + 106 pruebas + arranque real + prueba de arrastre
 npm run dist:mac     # .dmg (arm64 + x64)  · hay que ejecutarlo EN un Mac
 npm run dist:linux   # AppImage + .deb
 ```
@@ -104,6 +104,12 @@ la interfaz puede hacer está enumerado en `src/preload/preload.mjs`.
 tamaño o fecha han cambiado; la segunda pasada sobre una biblioteca grande es
 casi instantánea. Lo que desaparece se marca como ausente, no se borra —y si el
 disco entero no responde, no se marca nada: se avisa de que la carpeta no está.
+
+**Las correcciones no tocan tus archivos.** Si una canción viene con el título
+mal escrito se puede corregir —una a una o un álbum entero de golpe—, pero
+Pletina no reescribe etiquetas: la corrección se guarda en la biblioteca, se
+aplica encima de lo que diga el archivo y sobrevive a los reanálisis. Siempre se
+puede volver a lo que pone el disco.
 
 **Estado regenerable y estado del usuario, separados.** Las etiquetas se pueden
 volver a leer del disco cuando haga falta; los favoritos, las escuchas y las
@@ -166,17 +172,26 @@ y los empaqueta en `.ico` y `.icns`).
 
 ## Pruebas
 
-- `npm test` — 93 pruebas sobre la lógica pura (cola, orden y búsqueda, formato,
-  `Range`) y sobre el almacén y la biblioteca contra archivos de verdad en
-  carpetas temporales: análisis incremental, ausencias, discos desconectados,
-  listas y M3U de ida y vuelta.
+- `npm test` — 106 pruebas sobre la lógica pura (cola, orden y búsqueda,
+  formato, `Range`), sobre el almacén y la biblioteca contra archivos de verdad
+  en carpetas temporales —análisis incremental, ausencias, discos desconectados,
+  correcciones de etiquetas, listas y M3U de ida y vuelta— y de contrato entre
+  procesos: cada orden del menú tiene quien la atienda y cada canal del preload
+  existe al otro lado.
 - `npm run smoke` — levanta la aplicación de verdad, comprueba que la interfaz se
-  pinta sin un solo error de consola y guarda una captura. En Linux sin
-  escritorio usa `xvfb-run` automáticamente.
+  pinta sin un solo error de consola y guarda una captura.
+- `npm run test:arrastre` — suelta un archivo real sobre la ventana real y
+  comprueba que acaba en la biblioteca. Existe porque el error que rompía
+  arrastrar y soltar vivía en la costura entre el renderizador y el preload,
+  donde ninguna de las otras dos podía verlo.
+
+En Linux sin escritorio, las dos últimas usan `xvfb-run` automáticamente.
 
 ## Límites conocidos
 
 - Sin firma ni notarización (arriba).
+- Las correcciones de etiquetas viven en Pletina, no en los archivos: si abres tu
+  música con otro reproductor, seguirá viendo las etiquetas originales.
 - No hay reproducción sin cortes (*gapless*) de verdad: se precarga la siguiente
   canción para acortar el salto, pero entre pistas hay un silencio mínimo.
 - Las carátulas sueltas se buscan por nombre (`cover.jpg`, `folder.jpg`…), no por
