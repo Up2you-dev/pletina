@@ -24,7 +24,16 @@ export function registerSchemes() {
     },
     {
       scheme: MEDIA_SCHEME,
-      privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true },
+      // `corsEnabled` no es adorno: sin él, un `<audio crossorigin>` apuntando a
+      // este esquema entra en el grafo de Web Audio contaminado y suena a
+      // silencio, sin un solo error en consola.
+      privileges: {
+        standard: true,
+        secure: true,
+        stream: true,
+        supportFetchAPI: true,
+        corsEnabled: true,
+      },
     },
   ]);
 }
@@ -72,7 +81,7 @@ export function handleProtocols({ rendererDir, sharedDir, resolveTrack, resolveC
     }
     if (url.hostname === 'cover') {
       const file = resolveCover(id);
-      return file ? serveFile(file, contentTypeFor(file)) : notFound();
+      return file ? serveFile(file, contentTypeFor(file), { cors: true }) : notFound();
     }
     return notFound();
   });

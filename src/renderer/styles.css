@@ -57,10 +57,13 @@ svg{display:block; fill:none; stroke:currentColor; stroke-width:1.7; stroke-line
 .app{
   display:grid;
   grid-template-columns:var(--rail-w) minmax(0,1fr) var(--queue-w);
-  grid-template-rows:auto minmax(0,1fr) auto;
-  grid-template-areas:"top top top" "rail stage queue" "bar bar bar";
+  grid-template-rows:auto minmax(0,1fr) 0 auto;
+  grid-template-areas:"top top top" "rail stage queue" "viz viz viz" "bar bar bar";
   height:100vh;
 }
+/* La franja del visualizador ocupa alto real: superponerla sobre la lista
+   dejaba las canciones ilegibles detrás de las barras. */
+.app.con-visualizador{grid-template-rows:auto minmax(0,1fr) 150px auto}
 .app.queue-open{--queue-w:308px}
 .topbar{
   grid-area:top; display:flex; align-items:center; gap:14px; padding:11px 16px;
@@ -331,6 +334,35 @@ select.sort:hover{border-color:var(--muted-2)}
 .range:hover::-webkit-slider-thumb{width:14px; height:14px; margin-top:-5px}
 .vol{flex:none; width:92px}
 
+/* ---------- visualizador ---------- */
+.visualizador{grid-area:viz; width:100%; height:100%; display:block; background:var(--panel); border-top:1px solid var(--line)}
+
+/* ---------- panel de sonido ---------- */
+.sonido{
+  position:fixed; z-index:70; width:min(430px, calc(100vw - 24px));
+  background:var(--panel); border:1px solid var(--line); border-radius:12px;
+  box-shadow:var(--shadow-pop); padding:16px 18px 14px;
+}
+.sonido-cabecera{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px}
+.sonido-cabecera.con-linea{border-top:1px solid var(--line-soft); margin-top:18px; padding-top:14px}
+.sonido h3{font-family:var(--ff-display); font-size:14px; font-weight:700; letter-spacing:-.01em; margin:0}
+.interruptor{display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--muted); cursor:pointer}
+.interruptor input{width:16px; height:16px; margin:0; accent-color:var(--accent)}
+.interruptor.ancho{margin-top:8px; line-height:1.35}
+.chips{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px}
+.chip{border:1px solid var(--line); background:var(--panel-2); color:var(--muted); border-radius:99px; padding:4px 11px; font-size:12px; font-weight:600; cursor:pointer}
+.chip:hover{border-color:var(--muted-2); color:var(--text)}
+.chip.on{background:var(--accent-soft); border-color:var(--accent); color:var(--accent)}
+.bandas{display:flex; justify-content:space-between; gap:4px; padding:4px 0 2px}
+.bandas.apagado{opacity:.45}
+.banda{display:flex; flex-direction:column; align-items:center; gap:6px}
+.banda input[type="range"]{writing-mode:vertical-lr; direction:rtl; width:20px; height:96px; accent-color:var(--accent); cursor:pointer}
+.banda .hz{font-family:var(--ff-mono); font-size:9.5px; color:var(--muted-2)}
+.preamp{display:flex; align-items:center; gap:10px; margin-top:10px; font-size:12.5px; color:var(--muted)}
+.preamp input[type="range"]{flex:1; accent-color:var(--accent); cursor:pointer}
+.preamp .db{font-family:var(--ff-mono); font-size:11px; width:74px; text-align:right; color:var(--muted-2)}
+.sonido .nota{margin:12px 0 0; font-size:12px; color:var(--muted-2); line-height:1.45}
+
 /* ---------- popover / modal / avisos ---------- */
 .pop{position:fixed; z-index:60; min-width:236px; max-width:300px; background:var(--panel); border:1px solid var(--line); border-radius:var(--r); box-shadow:var(--shadow-pop); padding:6px; max-height:min(66vh,460px); overflow:auto}
 .pop button{display:flex; width:100%; align-items:center; gap:9px; padding:8px 10px; border:0; background:transparent; border-radius:var(--r-sm); font-size:13.5px; text-align:left; cursor:pointer; color:var(--text)}
@@ -359,6 +391,9 @@ select.sort:hover{border-color:var(--muted-2)}
 .modal .campo label{display:block; font-size:12px; font-weight:600; color:var(--muted); margin-bottom:4px}
 .modal .campo input{margin-bottom:0}
 .modal .campo input[type="number"]{appearance:textfield; -moz-appearance:textfield}
+.modal .casilla{display:flex; align-items:flex-start; gap:9px; margin:-6px 0 18px; font-size:13.5px; color:var(--muted); cursor:pointer}
+.modal .casilla input{width:16px; height:16px; margin:2px 0 0; accent-color:var(--accent); flex:none}
+.modal .casilla span{line-height:1.4}
 
 .toasts{position:fixed; left:50%; bottom:96px; transform:translateX(-50%); z-index:90; display:flex; flex-direction:column; align-items:center; gap:8px; pointer-events:none}
 .toast{background:var(--text); color:var(--bg); padding:9px 16px; border-radius:99px; font-size:13.5px; font-weight:500; box-shadow:var(--shadow-pop); animation:rise .18s ease; max-width:70vw; text-align:center}
@@ -376,7 +411,8 @@ select.sort:hover{border-color:var(--muted-2)}
   .app.queue-open{--queue-w:270px}
 }
 @media (max-width:860px){
-  .app{grid-template-columns:minmax(0,1fr); grid-template-areas:"top" "rail" "stage" "bar"; grid-template-rows:auto auto minmax(0,1fr) auto}
+  .app{grid-template-columns:minmax(0,1fr); grid-template-areas:"top" "rail" "stage" "viz" "bar"; grid-template-rows:auto auto minmax(0,1fr) 0 auto}
+  .app.con-visualizador{grid-template-rows:auto auto minmax(0,1fr) 110px auto}
   .app.queue-open{--queue-w:0px}
   .queue-panel{display:none}
   .rail{display:flex; align-items:center; gap:6px; overflow-x:auto; overflow-y:hidden; padding:9px 12px; border-right:0; border-bottom:1px solid var(--line)}

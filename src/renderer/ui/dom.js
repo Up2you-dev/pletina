@@ -119,7 +119,7 @@ export const isDialogOpen = () => dialogDepth > 0;
  * los valores (`fields`), `true`/`false` en una confirmación, o `null` si se
  * cancela.
  */
-export function dialog({ title, message, input, fields, value = '', ok = 'Aceptar', danger = false }) {
+export function dialog({ title, message, input, fields, check, value = '', ok = 'Aceptar', danger = false }) {
   return new Promise((resolve) => {
     dialogDepth += 1;
     const veil = document.createElement('div');
@@ -135,6 +135,10 @@ export function dialog({ title, message, input, fields, value = '', ok = 'Acepta
           value="${esc(campo.value ?? '')}" placeholder="${esc(campo.placeholder ?? '')}"
           autocomplete="off" spellcheck="false">
       </div>`).join('')}</div>` : ''}
+      ${check ? `<label class="casilla">
+        <input type="checkbox" name="${esc(check.name)}"${check.value ? ' checked' : ''}>
+        <span>${esc(check.label)}</span>
+      </label>` : ''}
       <div class="modal-actions">
         <button class="btn" data-x="cancel">Cancelar</button>
         <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-x="ok">${esc(ok)}</button>
@@ -148,10 +152,13 @@ export function dialog({ title, message, input, fields, value = '', ok = 'Acepta
       veil.querySelector('[data-x="ok"]').focus();
     }
 
-    /** Lo escrito en el formulario, campo a campo. */
-    const valores = () => Object.fromEntries(
-      [...veil.querySelectorAll('.campo input')].map((el) => [el.name, el.value.trim()]),
-    );
+    /** Lo escrito en el formulario, campo a campo, más la casilla si la hay. */
+    const valores = () => ({
+      ...Object.fromEntries(
+        [...veil.querySelectorAll('.campo input')].map((el) => [el.name, el.value.trim()]),
+      ),
+      ...(check ? { [check.name]: veil.querySelector('.casilla input').checked } : {}),
+    });
 
     const done = (result) => {
       dialogDepth -= 1;

@@ -54,6 +54,10 @@ export function mapMetadata({ common = {}, format = {} }, filePath) {
     lossless: Boolean(format.lossless),
     codec: trimmed(format.codec || format.container, 40),
     gainDb: toDecibels(common.replaygain_track_gain),
+    // Muchos archivos ya traen el tempo y la tonalidad puestos: se aprovechan
+    // en vez de analizar otra vez.
+    bpm: Number(common.bpm) > 0 ? Math.round(Number(common.bpm) * 10) / 10 : 0,
+    key: trimmed(common.key, 8),
   };
 }
 
@@ -77,6 +81,8 @@ export function bareMetadata(filePath) {
     lossless: extname(filePath) === '.flac' || extname(filePath) === '.wav',
     codec: extname(filePath).replace('.', '').toUpperCase(),
     gainDb: null,
+    bpm: 0,
+    key: '',
   };
 }
 

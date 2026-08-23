@@ -30,6 +30,9 @@ const isWin = process.platform === 'win32';
 const isDev = process.argv.includes('--dev') || Boolean(process.env.PLETINA_DEV);
 
 app.setName('Pletina');
+// Un reproductor de música local no debe pedir un clic para sonar: sin esto,
+// Chromium deja el contexto de audio suspendido y el ecualizador no arranca.
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 // Windows agrupa la ventana en la barra de tareas y ancla el acceso directo por
 // este identificador. Sin él, la aplicación aparece como «Electron».
 if (isWin) app.setAppUserModelId('es.up2you.pletina');
@@ -41,9 +44,17 @@ const SETTINGS_DEFAULTS = {
   shuffle: false,
   repeat: 'off',
   normalize: false,
+  eq: { activado: false, preset: 'plano', bandas: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], preamp: 0 },
+  crossfade: 0,
+  automix: false,
+  visualizador: false,
+  escribirEtiquetas: false,
   theme: 'system',
   queueOpen: false,
   sort: { key: 'added', dir: 'desc' },
+  ordenAlbumes: { key: 'artista', dir: 'asc' },
+  ordenArtistas: { key: 'nombre', dir: 'asc' },
+  ignorarArticulos: true,
   view: { type: 'library', id: null },
   last: { trackId: null, position: 0 },
   window: { width: 1180, height: 760, x: null, y: null, maximized: false },
@@ -404,10 +415,45 @@ function registerIpc() {
   });
   handle('track:played', (id) => library.registerPlay(id));
   // La lista blanca de campos vive en la biblioteca: aquí solo se comprueba la forma.
-  handle('tracks:edit', (ids, patch) => library.editTracks(
-    Array.isArray(ids) ? ids : [],
-    patch && typeof patch === 'object' ? patch : {},
-  ));
+  handle('tracks:edit', async (ids, patch, opciones) => {
+    const lista = Array.isArray(ids) ? ids : [];
+    const resultado = library.editTracks(lista, patch && typeof patch === 'object' ? patch : {});
+    // Escribir en los archivos del usuario solo si se ha pedido explícitamente.
+    if (opciones?.escribir) resultado.archivos = await library.escribirEnArchivos(lista);
+    return resultado;
+  });
+  handle('tracks:write', (ids) => library.escribirEnArchivos(Array.isArray(ids) ? ids : []));
+  handle('tracks:analysis', (id, datos) => library.setAnalysis(id, datos ?? {}));
+  handle('tracks:cover', async (ids, opciones) => {
+    const lista = Array.isArray(ids) ? ids : [];
+    if (!lista.length) return { ok: false };
+    const elegido = await dialog.showOpenDialog(mainWindow, {
+      title: 'Elegir una carátula',
+      buttonLabel: 'Usar esta imagen',
+      properties: ['openFile'],
+      filters: [{ name: 'Imágenes', extensions: ['jpg', 'jpeg', 'png', 'webp'] }],
+    });
+    if (elegido.canceled || !elegido.filePaths.length) return { ok: false, canceled: true };
+    try {
+      const resultado = await library.setCover(lista, elegido.filePaths[0]);
+      if (opciones?.escribir) resultado.archivos = await library.escribirEnArchivos(lista);
+      return { ok: true, ...resultado };
+    } catch (error) {
+      return { ok: false, error: error.message };
+    }
+  });
+  handle('tracks:coverFromPath', async (ids, imagePath, opciones) => {
+    const lista = Array.isArray(ids) ? ids : [];
+    if (!lista.length || typeof imagePath !== 'string') return { ok: false };
+    try {
+      const resultado = await library.setCover(lista, imagePath);
+      if (opciones?.escribir) resultado.archivos = await library.escribirEnArchivos(lista);
+      return { ok: true, ...resultado };
+    } catch (error) {
+      return { ok: false, error: error.message };
+    }
+  });
+  handle('tracks:clearCover', (ids) => library.clearCover(Array.isArray(ids) ? ids : []));
   handle('tracks:restore', (ids) => library.restoreTags(Array.isArray(ids) ? ids : []));
   handle('tracks:favorite', (ids, favorite) => library.setFavorite(Array.isArray(ids) ? ids : [], favorite));
 

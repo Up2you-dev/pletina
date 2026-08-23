@@ -5,8 +5,11 @@ import {
   groupByArtist,
   matchesTerms,
   normalize,
+  ordenarAlbumes,
+  ordenarArtistas,
   queryTerms,
   searchHaystack,
+  sinArticulo,
   sortTracks,
 } from '../src/shared/sorting.js';
 
@@ -134,5 +137,93 @@ describe('agrupaciones', () => {
     const groups = groupByAlbum([track({ album: '', artist: '', albumArtist: '' })]);
     expect(groups[0].album).toBe('Sin álbum');
     expect(groups[0].artist).toBe('Sin artista');
+  });
+});
+
+describe('artículos al ordenar', () => {
+  it('los quita del principio, en castellano y en inglés', () => {
+    expect(sinArticulo('Los Planetas')).toBe('Planetas');
+    expect(sinArticulo('El Último de la Fila')).toBe('Último de la Fila');
+    expect(sinArticulo('The Beatles')).toBe('Beatles');
+    expect(sinArticulo('La Habitación Roja')).toBe('Habitación Roja');
+  });
+
+  it('no toca los que forman parte del nombre', () => {
+    expect(sinArticulo('Lagartija Nick')).toBe('Lagartija Nick');
+    expect(sinArticulo('Elefantes')).toBe('Elefantes');
+    expect(sinArticulo('Amaral')).toBe('Amaral');
+  });
+
+  it('coloca a cada artista donde lo buscaría una persona', () => {
+    const t = (artist) => ({ title: 'x', artist, album: '', path: `/${artist}` });
+    const lista = [t('The Beatles'), t('Los Planetas'), t('Amaral'), t('El Último de la Fila')];
+    expect(sortTracks(lista, 'artist', 'asc').map((x) => x.artist))
+      .toEqual(['Amaral', 'The Beatles', 'Los Planetas', 'El Último de la Fila']);
+  });
+
+  it('se puede pedir el orden literal', () => {
+    const t = (artist) => ({ title: 'x', artist, album: '', path: `/${artist}` });
+    const lista = [t('The Beatles'), t('Amaral')];
+    expect(sortTracks(lista, 'artist', 'asc', { ignorarArticulos: false }).map((x) => x.artist))
+      .toEqual(['Amaral', 'The Beatles']);
+  });
+});
+
+describe('orden de las rejillas', () => {
+  const albumes = () => [
+    { key: 'a', album: 'Omega', artist: 'Lagartija Nick', year: 1996, tracks: [1, 2] },
+    { key: 'b', album: 'Una semana', artist: 'Los Planetas', year: 1998, tracks: [1, 2, 3] },
+    { key: 'c', album: 'Antártida', artist: 'Amaral', year: 2005, tracks: [1] },
+  ];
+
+  it('por artista, ignorando el artículo', () => {
+    expect(ordenarAlbumes(albumes(), 'artista', 'asc').map((a) => a.artist))
+      .toEqual(['Amaral', 'Lagartija Nick', 'Los Planetas']);
+  });
+
+  it('por año, y del revés', () => {
+    expect(ordenarAlbumes(albumes(), 'year', 'asc').map((a) => a.year)).toEqual([1996, 1998, 2005]);
+    expect(ordenarAlbumes(albumes(), 'year', 'desc').map((a) => a.year)).toEqual([2005, 1998, 1996]);
+  });
+
+  it('por número de canciones', () => {
+    expect(ordenarAlbumes(albumes(), 'canciones', 'desc').map((a) => a.tracks.length)).toEqual([3, 2, 1]);
+  });
+
+  it('un criterio desconocido no rompe nada: cae al de siempre', () => {
+    expect(ordenarAlbumes(albumes(), 'inventado', 'asc').map((a) => a.artist))
+      .toEqual(['Amaral', 'Lagartija Nick', 'Los Planetas']);
+  });
+
+  it('los artistas se ordenan por nombre o por cuántos discos tienen', () => {
+    const lista = [
+      { key: 'a', artist: 'The Beatles', albumCount: 12, tracks: [1] },
+      { key: 'b', artist: 'Amaral', albumCount: 3, tracks: [1, 2] },
+    ];
+    expect(ordenarArtistas([...lista], 'nombre', 'asc').map((a) => a.artist)).toEqual(['Amaral', 'The Beatles']);
+    expect(ordenarArtistas([...lista], 'albumes', 'desc').map((a) => a.artist)).toEqual(['The Beatles', 'Amaral']);
+  });
+});
+
+describe('ordenar por tempo y tonalidad', () => {
+  const t = (bpm, key) => ({ title: `${bpm}`, artist: '', album: '', bpm, key, path: `/${bpm}` });
+
+  it('ordena por pulsaciones', () => {
+    expect(sortTracks([t(140, 'C'), t(90, 'G'), t(120, 'Am')], 'bpm', 'asc').map((x) => x.bpm))
+      .toEqual([90, 120, 140]);
+  });
+
+  it('las canciones sin analizar quedan al final, se ordene como se ordene', () => {
+    const lista = [t(0, ''), t(120, 'Am'), t(90, 'C')];
+    expect(sortTracks(lista, 'key', 'asc').map((x) => x.key)).toEqual(['Am', 'C', '']);
+    expect(sortTracks(lista, 'key', 'desc').map((x) => x.key)).toEqual(['C', 'Am', '']);
+    expect(sortTracks(lista, 'bpm', 'asc').map((x) => x.bpm)).toEqual([90, 120, 0]);
+    expect(sortTracks(lista, 'bpm', 'desc').map((x) => x.bpm)).toEqual([120, 90, 0]);
+  });
+
+  it('un año en blanco no es el año cero', () => {
+    const disco = (year, title) => ({ title, artist: '', album: title, year, path: `/${title}` });
+    const lista = [disco(0, 'sin año'), disco(1996, 'Omega'), disco(2005, 'Antártida')];
+    expect(sortTracks(lista, 'year', 'asc').map((x) => x.title)).toEqual(['Omega', 'Antártida', 'sin año']);
   });
 });

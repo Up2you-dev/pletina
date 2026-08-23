@@ -17,6 +17,7 @@ export function bindTransport(handlers) {
   $('#btn-fav').addEventListener('click', () => actions.toggleFavorite());
   $('#btn-help').addEventListener('click', (event) => actions.help(event.currentTarget));
   $('#btn-queue').addEventListener('click', () => actions.toggleQueue());
+  $('#btn-sonido').addEventListener('click', (event) => actions.abrirSonido(event.currentTarget));
   $('#btn-theme').addEventListener('click', () => actions.toggleTheme());
 
   const volume = $('#vol');
@@ -135,6 +136,9 @@ export function syncToggles({ dark } = {}) {
   const theme = $('#btn-theme');
   theme.innerHTML = dark ? ICO.sun : ICO.moon;
 
+  const sonido = $('#btn-sonido');
+  sonido.innerHTML = ICO.sliders;
+  sonido.classList.toggle('on', state.eq.activado || state.crossfade > 0);
   $('#btn-menu').innerHTML = ICO.menu;
   $('#btn-prev').innerHTML = ICO.prev;
   $('#btn-next').innerHTML = ICO.next;

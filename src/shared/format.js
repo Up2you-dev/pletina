@@ -25,12 +25,17 @@ export function plural(n, one, many) {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-/** Ficha técnica corta de un archivo: «FLAC · 44,1 kHz · 1.024 kbps». */
+/**
+ * Ficha técnica corta: «FLAC · 44,1 kHz · 1024 kbps · 128 bpm · Am».
+ * El tempo y la tonalidad solo aparecen cuando se han analizado.
+ */
 export function formatQuality(track) {
   const parts = [];
   if (track.codec) parts.push(String(track.codec).toUpperCase());
   if (track.sampleRate) parts.push(`${String(track.sampleRate / 1000).replace('.', ',')} kHz`);
   if (track.bitrate) parts.push(`${Math.round(track.bitrate / 1000)} kbps`);
+  if (track.bpm) parts.push(`${Math.round(track.bpm)} bpm`);
+  if (track.key) parts.push(track.key);
   return parts.join(' · ');
 }
 

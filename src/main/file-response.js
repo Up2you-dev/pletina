@@ -11,11 +11,21 @@ import { parseRange } from '../shared/range.js';
 
 export const notFound = () => new Response('', { status: 404 });
 
+/**
+ * Un elemento `<audio>` que va a pasar por Web Audio necesita permiso de origen
+ * cruzado; si no, el grafo suena a silencio en vez de dar error. La interfaz y
+ * el audio viven en esquemas distintos, así que hace falta decirlo.
+ */
+const CORS = { 'access-control-allow-origin': '*' };
+
 /** Archivo entero, con su tipo. Para la interfaz y las carátulas. */
-export async function serveFile(file, type) {
+export async function serveFile(file, type, { cors = false } = {}) {
   try {
     const body = await readFile(file);
-    return new Response(body, { status: 200, headers: { 'content-type': type } });
+    return new Response(body, {
+      status: 200,
+      headers: { 'content-type': type, ...(cors ? CORS : {}) },
+    });
   } catch {
     return notFound();
   }
@@ -25,7 +35,7 @@ export async function serveFile(file, type) {
  * Archivo con soporte de `Range`. Sin esto no se puede saltar al minuto tres de
  * una canción: Chromium pide un tramo y espera un 206 con su `Content-Range`.
  */
-export async function serveRanged(file, request) {
+export async function serveRanged(file, request, { cors = true } = {}) {
   let stats;
   try {
     stats = await stat(file);
@@ -50,6 +60,7 @@ export async function serveRanged(file, request) {
     'accept-ranges': 'bytes',
     'content-length': String(length),
     'cache-control': 'no-store',
+    ...(cors ? CORS : {}),
   };
   if (range) headers['content-range'] = `bytes ${start}-${end}/${stats.size}`;
 

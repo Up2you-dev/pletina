@@ -58,7 +58,7 @@ npm run dist:win     # y esto te deja el instalador en release\
 Y para lo demás:
 
 ```bash
-npm run verify       # lint + 106 pruebas + arranque real + prueba de arrastre
+npm run verify       # lint + 156 pruebas + arranque real + prueba de arrastre
 npm run dist:mac     # .dmg (arm64 + x64)  · hay que ejecutarlo EN un Mac
 npm run dist:linux   # AppImage + .deb
 ```
@@ -116,11 +116,19 @@ tamaño o fecha han cambiado; la segunda pasada sobre una biblioteca grande es
 casi instantánea. Lo que desaparece se marca como ausente, no se borra —y si el
 disco entero no responde, no se marca nada: se avisa de que la carpeta no está.
 
-**Las correcciones no tocan tus archivos.** Si una canción viene con el título
-mal escrito se puede corregir —una a una o un álbum entero de golpe—, pero
-Pletina no reescribe etiquetas: la corrección se guarda en la biblioteca, se
-aplica encima de lo que diga el archivo y sobrevive a los reanálisis. Siempre se
-puede volver a lo que pone el disco.
+**Las correcciones no tocan tus archivos, salvo que lo pidas.** Si una canción
+viene con el título mal escrito se puede corregir —una a una o un álbum entero de
+golpe— y por defecto la corrección se guarda en la biblioteca, se aplica encima
+de lo que diga el archivo y sobrevive a los reanálisis. Marcando la casilla
+*Escribir también dentro del archivo*, baja al MP3 o al WAV: antes se deja una
+copia `.pletina-bak` al lado, se escribe en un temporal y se renombra encima, así
+que un corte a mitad no puede destrozar la canción.
+
+**El sonido pasa por Web Audio.** De ahí salen el ecualizador de diez bandas, el
+visualizador y el fundido entre canciones, que necesita dos platos sonando a la
+vez. El tempo y la tonalidad se calculan aparte, en matemática pura y probada
+con señales fabricadas, y solo cuando se piden: decodificar el audio de una
+biblioteca entera costaría horas para un dato que casi nadie mira.
 
 **Estado regenerable y estado del usuario, separados.** Las etiquetas se pueden
 volver a leer del disco cuando haga falta; los favoritos, las escuchas y las
@@ -183,7 +191,7 @@ y los empaqueta en `.ico` y `.icns`).
 
 ## Pruebas
 
-- `npm test` — 106 pruebas sobre la lógica pura (cola, orden y búsqueda,
+- `npm test` — 156 pruebas sobre la lógica pura (cola, orden y búsqueda,
   formato, `Range`), sobre el almacén y la biblioteca contra archivos de verdad
   en carpetas temporales —análisis incremental, ausencias, discos desconectados,
   correcciones de etiquetas, listas y M3U de ida y vuelta— y de contrato entre
@@ -201,8 +209,13 @@ En Linux sin escritorio, las dos últimas usan `xvfb-run` automáticamente.
 ## Límites conocidos
 
 - Sin firma ni notarización (arriba).
-- Las correcciones de etiquetas viven en Pletina, no en los archivos: si abres tu
-  música con otro reproductor, seguirá viendo las etiquetas originales.
+- Escribir etiquetas solo funciona en MP3 y WAV. En FLAC, M4A y compañía la
+  corrección se queda en Pletina, y la aplicación lo dice al intentarlo.
+- La mezcla automática ajusta el tempo cambiando la velocidad, así que también
+  cambia ligeramente el tono. No hace *time-stretching*.
+- El análisis de tempo acierta bien con música de pulso marcado y falla más con
+  música libre o en vivo; por eso guarda su nivel de confianza y no se inventa un
+  número cuando no lo tiene claro.
 - No hay reproducción sin cortes (*gapless*) de verdad: se precarga la siguiente
   canción para acortar el salto, pero entre pistas hay un silencio mínimo.
 - Las carátulas sueltas se buscan por nombre (`cover.jpg`, `folder.jpg`…), no por

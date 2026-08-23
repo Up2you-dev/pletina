@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { parseFile } from 'music-metadata';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { LIBRARY_DEFAULTS, createLibrary, trackIdFor, walkAudio } from '../src/main/library.js';
 import { createStore } from '../src/main/store.js';
@@ -10,12 +11,18 @@ let musica;
 let library;
 let store;
 
-/** La caché de carátulas necesita Electron; aquí basta con un doble. */
+/** La caché de carátulas necesita Electron; aquí basta con un doble que recuerde. */
+let caratulas;
 const coversDouble = {
-  store: async () => null,
+  store: async (buffer) => {
+    if (!buffer?.length) return null;
+    const id = `c${caratulas.size}.jpg`;
+    caratulas.set(id, Buffer.from(buffer));
+    return id;
+  },
   fromFolder: async () => null,
   resetFolderCache: () => {},
-  pathFor: (id) => id,
+  pathFor: (id) => path.join(root, 'caratulas', id),
 };
 
 const song = (relative, bytes = 'ID3 falso') => {
@@ -27,6 +34,7 @@ const song = (relative, bytes = 'ID3 falso') => {
 
 beforeEach(async () => {
   root = await mkdtemp(path.join(tmpdir(), 'pletina-lib-'));
+  caratulas = new Map();
   musica = path.join(root, 'musica');
   await mkdir(musica, { recursive: true });
   store = createStore({ dir: root, name: 'biblioteca', defaults: LIBRARY_DEFAULTS, debounceMs: 5 });
@@ -410,5 +418,109 @@ describe('corregir etiquetas', () => {
     // Ni se pierde la corrección ni se queda el archivo sin nombre.
     expect(primera().title).toBe('Nombre corregido');
     expect(primera().edits).toEqual({ title: 'Nombre corregido' });
+  });
+});
+
+describe('escribir en los archivos', () => {
+  /** WAV mínimo de verdad: se va a leer con el mismo lector que usa la aplicación. */
+  const wavReal = () => {
+    const datos = Buffer.alloc(8000 * 2);
+    const fmt = Buffer.alloc(24);
+    fmt.write('fmt ', 0, 4, 'ascii');
+    fmt.writeUInt32LE(16, 4);
+    fmt.writeUInt16LE(1, 8);
+    fmt.writeUInt16LE(1, 10);
+    fmt.writeUInt32LE(8000, 12);
+    fmt.writeUInt32LE(16000, 16);
+    fmt.writeUInt16LE(2, 20);
+    fmt.writeUInt16LE(16, 22);
+    const cabecera = Buffer.alloc(8);
+    cabecera.write('data', 0, 4, 'ascii');
+    cabecera.writeUInt32LE(datos.length, 4);
+    const cuerpo = Buffer.concat([Buffer.from('WAVE', 'ascii'), fmt, cabecera, datos]);
+    const riff = Buffer.alloc(8);
+    riff.write('RIFF', 0, 4, 'ascii');
+    riff.writeUInt32LE(cuerpo.length, 4);
+    return Buffer.concat([riff, cuerpo]);
+  };
+
+  it('lleva la corrección al archivo y deja de necesitar el apaño', async () => {
+    const archivo = path.join(musica, 'sin-etiquetas.wav');
+    await mkdir(musica, { recursive: true });
+    await writeFile(archivo, wavReal());
+    await library.addFolders([musica]);
+    const track = library.listTracks()[0];
+    library.editTracks([track.id], { title: 'Nombre bueno', artist: 'Quien sea' });
+    expect(library.getTrack(track.id).edits).not.toBeNull();
+
+    const resultado = await library.escribirEnArchivos([track.id]);
+
+    expect(resultado.hechos).toHaveLength(1);
+    expect(resultado.fallidos).toHaveLength(0);
+    // El archivo ya lo dice por sí mismo, así que la corrección sobra.
+    expect(library.getTrack(track.id).edits).toBeNull();
+    const leido = await parseFile(archivo);
+    expect(leido.common.title).toBe('Nombre bueno');
+    expect(leido.common.artist).toBe('Quien sea');
+  });
+
+  it('un reanálisis posterior conserva lo escrito', async () => {
+    const archivo = path.join(musica, 'sin-etiquetas.wav');
+    await mkdir(musica, { recursive: true });
+    await writeFile(archivo, wavReal());
+    await library.addFolders([musica]);
+    const track = library.listTracks()[0];
+    library.editTracks([track.id], { title: 'Definitivo' });
+    await library.escribirEnArchivos([track.id]);
+
+    await library.rescan({ full: true });
+
+    expect(library.listTracks()[0].title).toBe('Definitivo');
+  });
+
+  it('dice qué formatos no sabe escribir en vez de fallar en silencio', async () => {
+    await song('a.flac');
+    await library.addFolders([musica]);
+    const track = library.listTracks()[0];
+
+    const resultado = await library.escribirEnArchivos([track.id]);
+
+    expect(resultado.hechos).toHaveLength(0);
+    expect(resultado.noSoportados[0].motivo).toContain('FLAC');
+  });
+});
+
+describe('carátulas', () => {
+  beforeEach(async () => {
+    await song('a.mp3');
+    await song('b.mp3');
+    await library.addFolders([musica]);
+  });
+
+  it('pone la misma imagen a varias canciones', async () => {
+    const imagen = path.join(root, 'portada.jpg');
+    await writeFile(imagen, Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]));
+    const ids = library.listTracks().map((t) => t.id);
+
+    const resultado = await library.setCover(ids, imagen);
+
+    expect(resultado.changed).toBe(2);
+    expect(library.listTracks().every((t) => t.coverId === resultado.coverId)).toBe(true);
+  });
+
+  it('se puede quitar', async () => {
+    const imagen = path.join(root, 'portada.jpg');
+    await writeFile(imagen, Buffer.from([1, 2, 3, 4]));
+    const ids = library.listTracks().map((t) => t.id);
+    await library.setCover(ids, imagen);
+
+    expect(library.clearCover(ids).changed).toBe(2);
+    expect(library.listTracks().every((t) => t.coverId === null)).toBe(true);
+  });
+
+  it('una imagen que no existe se queja, no revienta la biblioteca', async () => {
+    const ids = library.listTracks().map((t) => t.id);
+    await expect(library.setCover(ids, path.join(root, 'fantasma.jpg'))).rejects.toThrow();
+    expect(library.listTracks()).toHaveLength(2);
   });
 });

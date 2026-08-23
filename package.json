@@ -1,7 +1,7 @@
 {
   "name": "pletina",
   "productName": "Pletina",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "private": true,
   "description": "Reproductor de música local de escritorio: tu biblioteca en tu disco, sin nube y sin cuentas",
   "author": {
@@ -37,7 +37,8 @@
     "test:arrastre": "node scripts/prueba-arrastre.mjs"
   },
   "dependencies": {
-    "music-metadata": "^11.15.0"
+    "music-metadata": "^11.15.0",
+    "node-id3": "^0.2.9"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.0",

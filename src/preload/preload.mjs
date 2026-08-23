@@ -38,8 +38,16 @@ contextBridge.exposeInMainWorld('pletina', {
   track: {
     patch: (id, patch) => invoke('track:patch', id, patch),
     played: (id) => invoke('track:played', id),
-    /** Corrige las etiquetas dentro de Pletina; el archivo del disco no se toca. */
-    edit: (ids, patch) => invoke('tracks:edit', ids, patch),
+    /**
+     * Corrige las etiquetas. Por defecto la corrección vive en Pletina; con
+     * `{escribir: true}` baja también al archivo del disco.
+     */
+    edit: (ids, patch, opciones) => invoke('tracks:edit', ids, patch, opciones),
+    write: (ids) => invoke('tracks:write', ids),
+    analysis: (id, datos) => invoke('tracks:analysis', id, datos),
+    cover: (ids, opciones) => invoke('tracks:cover', ids, opciones),
+    coverFromPath: (ids, imagePath, opciones) => invoke('tracks:coverFromPath', ids, imagePath, opciones),
+    clearCover: (ids) => invoke('tracks:clearCover', ids),
     restore: (ids) => invoke('tracks:restore', ids),
     favorite: (ids, favorite) => invoke('tracks:favorite', ids, favorite),
   },

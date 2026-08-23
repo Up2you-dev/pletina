@@ -1,7 +1,7 @@
 import { $, $$, coverHtml, esc, gradientFor, popover } from './dom.js';
 import { ICO } from './icons.js';
 import { formatTime, formatTotal, formatWhen, plural } from '../../shared/format.js';
-import { SORT_KEYS } from '../../shared/sorting.js';
+import { ORDEN_ALBUMES, ORDEN_ARTISTAS, SORT_KEYS } from '../../shared/sorting.js';
 import {
   actionTargets,
   albumByKey,
@@ -160,7 +160,23 @@ function toolbarHtml(tracks) {
     }</select>`);
     parts.push(`<button class="btn" data-tool="dir">${state.sort.dir === 'asc' ? '↑ Ascendente' : '↓ Descendente'}</button>`);
   }
+  if (view.type === 'albums' || view.type === 'artists') {
+    const opciones = view.type === 'albums' ? ORDEN_ALBUMES : ORDEN_ARTISTAS;
+    const actual = view.type === 'albums' ? state.ordenAlbumes : state.ordenArtistas;
+    parts.push(`<span class="label">Ordenar por</span><select class="sort" id="grid-sort">${
+      opciones.map(([key, label]) => `<option value="${key}"${actual.key === key ? ' selected' : ''}>${label}</option>`).join('')
+    }</select>`);
+    parts.push(`<button class="btn" data-tool="grid-dir">${actual.dir === 'asc' ? '↑ Ascendente' : '↓ Descendente'}</button>`);
+  }
   if (view.type === 'playlist') {
+    if (tracks.length > 1) {
+      // Estaba en la maqueta original y se perdió por el camino: reordenar la
+      // lista entera por un criterio, de forma permanente.
+      parts.push(`<span class="label">Reordenar por</span><select class="sort" id="playlist-sort">
+        <option value="">Mi orden</option>
+        ${SORT_KEYS.map(([key, label]) => `<option value="${key}">${label}</option>`).join('')}
+      </select>`);
+    }
     parts.push('<div class="spacer"></div>');
     parts.push(`<button class="btn" data-tool="pl-rename">${ICO.pencil}Renombrar</button>`);
     parts.push(`<button class="btn" data-tool="pl-export">${ICO.export}Exportar</button>`);
@@ -355,6 +371,27 @@ export function trackMenu(anchor, id) {
     icon: ICO.pencil,
     run: () => actions.editTags(ids),
   });
+  items.push({
+    key: 'cover',
+    label: many ? `Poner una carátula a ${ids.length} canciones…` : 'Poner una carátula…',
+    icon: ICO.image,
+    run: () => actions.setCover(ids),
+  });
+  if (ids.some((each) => getTrack(each)?.coverId)) {
+    items.push({ key: 'nocover', label: 'Quitar la carátula', icon: ICO.x, run: () => actions.clearCover(ids) });
+  }
+  items.push({
+    key: 'analizar',
+    label: many ? `Analizar tempo y tonalidad de ${ids.length}…` : 'Analizar tempo y tonalidad',
+    icon: ICO.waves,
+    run: () => actions.analizar(ids),
+  });
+  items.push({
+    key: 'write',
+    label: 'Escribir las etiquetas en el archivo…',
+    icon: ICO.down,
+    run: () => actions.writeToFiles(ids),
+  });
   if (ids.some((each) => getTrack(each)?.edits)) {
     items.push({
       key: 'restore',
@@ -402,6 +439,10 @@ export function bindStage(handlers) {
   });
   head.addEventListener('change', (event) => {
     if (event.target.id === 'sort-key') actions.sortBy(event.target.value);
+    if (event.target.id === 'grid-sort') actions.sortGrid(event.target.value);
+    if (event.target.id === 'playlist-sort' && event.target.value) {
+      actions.reorderPlaylistBy(event.target.value);
+    }
   });
 
   body.addEventListener('click', (event) => {

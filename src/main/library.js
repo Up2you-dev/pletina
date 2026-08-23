@@ -3,6 +3,7 @@ import { readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isAudioPath, isIgnoredEntry } from '../shared/audio-files.js';
 import { readTags } from './metadata.js';
+import * as escritorPorDefecto from './tag-writer.js';
 
 export const LIBRARY_DEFAULTS = { version: 1, folders: [], tracks: {}, playlists: [] };
 
@@ -69,7 +70,7 @@ async function pool(items, limit, worker) {
  * La aplicación guarda rutas y etiquetas; la música sigue siendo del disco del
  * usuario, con su estructura de carpetas intacta.
  */
-export function createLibrary({ store, covers, onProgress = () => {} }) {
+export function createLibrary({ store, covers, escritor = escritorPorDefecto, onProgress = () => {} }) {
   let scanning = false;
   let stopRequested = false;
 
@@ -91,6 +92,11 @@ export function createLibrary({ store, covers, onProgress = () => {} }) {
     if (!coverId) coverId = await covers.fromFolder(path.dirname(filePath));
     return {
       ...meta,
+      // Un análisis ya hecho no se tira al releer el archivo: cuesta segundos.
+      bpm: meta.bpm || previous?.bpm || 0,
+      key: meta.key || previous?.key || '',
+      tonalidad: previous?.tonalidad || '',
+      analisis: previous?.analisis ?? null,
       // Lo que el usuario corrigió a mano gana a lo que diga la etiqueta, y
       // sigue ganando después de volver a leer el archivo.
       ...(previous?.edits ?? {}),
@@ -315,6 +321,100 @@ export function createLibrary({ store, covers, onProgress = () => {} }) {
   }
 
   /**
+   * Baja al archivo lo que Pletina tiene guardado. Es lo contrario de la
+   * corrección normal: aquí sí se toca la música del usuario, y por eso solo
+   * ocurre cuando se pide y en los formatos que se saben escribir bien.
+   *
+   * Al conseguirlo se olvida la corrección: la verdad ya está en el archivo, y
+   * dejar el apaño encima solo serviría para que un día se pisaran.
+   */
+  async function escribirEnArchivos(ids) {
+    const hechos = [];
+    const fallidos = [];
+    const noSoportados = [];
+    for (const id of ids) {
+      const track = tracks()[id];
+      if (!track) continue;
+      if (!escritor.puedeEscribir(track.path)) {
+        noSoportados.push({ id, title: track.title, motivo: escritor.motivoNoEscribible(track.path) });
+        continue;
+      }
+      let caratula = null;
+      if (track.coverId) {
+        caratula = await readFile(covers.pathFor(track.coverId))
+          .then((buffer) => ({ buffer, mime: 'image/jpeg' }))
+          .catch(() => null);
+      }
+      const resultado = await escritor.escribirEtiquetas(track.path, track, { caratula });
+      if (!resultado.ok) {
+        fallidos.push({ id, title: track.title, error: resultado.error });
+        continue;
+      }
+      hechos.push({ id, title: track.title, aviso: resultado.aviso, copia: resultado.copia });
+      // El archivo acaba de cambiar: se apunta su nuevo estado para que el
+      // próximo análisis no lo relea sin motivo, y se retira la corrección.
+      try {
+        const stats = await stat(track.path);
+        store.update((d) => {
+          if (!d.tracks[id]) return;
+          d.tracks[id].size = stats.size;
+          d.tracks[id].mtimeMs = Math.round(stats.mtimeMs);
+          d.tracks[id].edits = null;
+        });
+      } catch {
+        /* si no se puede consultar, el reanálisis lo pondrá al día */
+      }
+    }
+    return { hechos, fallidos, noSoportados };
+  }
+
+  /**
+   * Guarda el resultado del análisis. Se apunta también la confianza: un tempo
+   * dudoso vale para ordenar, pero no para mezclar a ciegas.
+   */
+  function setAnalysis(id, datos = {}) {
+    return store.update((d) => {
+      const track = d.tracks[id];
+      if (!track) return null;
+      const bpm = Number(datos.bpm);
+      track.bpm = Number.isFinite(bpm) && bpm > 0 ? Math.round(bpm * 10) / 10 : 0;
+      track.key = typeof datos.key === 'string' ? datos.key.slice(0, 8) : '';
+      track.tonalidad = typeof datos.tonalidad === 'string' ? datos.tonalidad.slice(0, 24) : '';
+      track.analisis = {
+        bpmConfianza: Number(datos.bpmConfianza) || 0,
+        keyConfianza: Number(datos.keyConfianza) || 0,
+        en: Date.now(),
+      };
+      return track;
+    });
+  }
+
+  /** Pone una imagen como carátula. Vive en la caché; al archivo solo si se pide. */
+  async function setCover(ids, imagePath) {
+    const buffer = await readFile(imagePath);
+    const coverId = await covers.store(buffer);
+    if (!coverId) throw new Error('no he podido leer esa imagen');
+    store.update((d) => {
+      for (const id of ids) {
+        if (d.tracks[id]) d.tracks[id].coverId = coverId;
+      }
+    });
+    return { coverId, changed: ids.length };
+  }
+
+  function clearCover(ids) {
+    let changed = 0;
+    store.update((d) => {
+      for (const id of ids) {
+        if (!d.tracks[id]) continue;
+        d.tracks[id].coverId = null;
+        changed += 1;
+      }
+    });
+    return { changed };
+  }
+
+  /**
    * Deshace las correcciones y vuelve a leer las etiquetas del archivo.
    *
    * Si el archivo no se puede leer —disco desconectado— la corrección se
@@ -491,6 +591,10 @@ export function createLibrary({ store, covers, onProgress = () => {} }) {
     removeMissing,
     patchTrack,
     editTracks,
+    setAnalysis,
+    escribirEnArchivos,
+    setCover,
+    clearCover,
     restoreTags,
     setFavorite,
     registerPlay,

@@ -9,6 +9,7 @@ import {
   withoutIds,
 } from '../shared/queue.js';
 import { plural } from '../shared/format.js';
+import { sortTracks } from '../shared/sorting.js';
 import * as player from './player.js';
 import {
   albumByKey,
@@ -17,6 +18,7 @@ import {
   clearSelection,
   getTrack,
   normalize,
+  opcionesDeOrden,
   playlistById,
   normalizeView,
   setQuery,
@@ -28,6 +30,9 @@ import { $, closePop, dialog, esc, isDialogOpen, popover, toast } from './ui/dom
 import { bindRail, playlistMenu, renderRail } from './ui/rail.js';
 import { bindStage, refreshRows, renderStage, renderStageHead, scrollToCurrent } from './ui/stage.js';
 import { bindQueue, renderQueue } from './ui/queue.js';
+import { abrirSonido, bindSonido, cerrarSonido } from './ui/sonido.js';
+import { alternarVisualizador, montarVisualizador } from './ui/visualizador.js';
+import { analizarPista } from './analisis.js';
 import {
   bindTransport,
   helpPopover,
@@ -128,6 +133,24 @@ function prev() {
   return undefined;
 }
 
+/** Arranca la siguiente antes de que acabe esta y cruza las dos. */
+function encadenarSiguiente() {
+  if (!state.crossfade || !player.hayMotor()) return;
+  const resultado = advance(state.queue, { repeat: state.repeat, auto: true });
+  if (!resultado.id || resultado.restart || resultado.ended) return;
+  const ok = player.encadenar(resultado.id, {
+    segundos: state.crossfade,
+    automezcla: state.automix,
+  });
+  if (!ok) return;
+  state.queue = resultado.queue;
+  countedFor = null;
+  refreshRows();
+  renderQueue();
+  const siguiente = [...state.queue.manual, ...state.queue.order.slice(state.queue.index + 1)][0];
+  player.warmNext(siguiente);
+}
+
 function togglePlay() {
   if (!state.currentId) {
     const list = visibleTracks();
@@ -226,6 +249,31 @@ async function withPlaylistPrompt(ids) {
   toast(`Lista «${playlist.name}» creada`);
 }
 
+/** Traduce el parte de la escritura en archivos a una frase corta. */
+function contarEscritura(archivos, corregidas = 0, porDefecto = null) {
+  if (!archivos) {
+    if (corregidas) {
+      toast(corregidas > 1
+        ? plural(corregidas, 'canción corregida', 'canciones corregidas')
+        : 'Información corregida');
+    } else if (porDefecto) toast(porDefecto);
+    return;
+  }
+  const { hechos = [], fallidos = [], noSoportados = [] } = archivos;
+  const partes = [];
+  if (hechos.length) partes.push(`${plural(hechos.length, 'archivo escrito', 'archivos escritos')}`);
+  if (noSoportados.length) partes.push(`${noSoportados.length} sin soporte`);
+  if (fallidos.length) partes.push(`${fallidos.length} con error`);
+  if (!partes.length) {
+    toast(porDefecto ?? 'Información corregida');
+    return;
+  }
+  toast(partes.join(' · '));
+  // Un formato que no se sabe escribir merece una explicación, no un número.
+  if (noSoportados.length) setTimeout(() => toast(noSoportados[0].motivo), 800);
+  if (fallidos.length) setTimeout(() => toast(`«${fallidos[0].title}»: ${fallidos[0].error}`), 1600);
+}
+
 const actions = {
   navigate(view) {
     state.view = { id: null, key: null, ...view };
@@ -313,6 +361,51 @@ const actions = {
   reveal: (id) => api.library.reveal(id),
 
   /**
+   * Tempo y tonalidad. Se analiza a petición porque decodificar el audio cuesta
+   * segundos por canción: hacerlo con toda la biblioteca al importar sería
+   * tenerla bloqueada durante horas.
+   */
+  async analizar(ids) {
+    const motor = player.engine();
+    if (!motor) {
+      toast('Este equipo no permite analizar el audio.');
+      return;
+    }
+    const chip = $('#chip');
+    const texto = $('#chip-text');
+    chip.classList.add('show');
+    let hechas = 0;
+    let fallidas = 0;
+    for (const id of ids) {
+      const track = getTrack(id);
+      texto.textContent = `Analizando ${hechas + 1}/${ids.length}`;
+      try {
+        const resultado = await analizarPista(id, motor.contexto);
+        await api.track.analysis(id, resultado);
+        if (track) Object.assign(track, {
+          bpm: resultado.bpm,
+          key: resultado.key,
+          tonalidad: resultado.tonalidad,
+        });
+        hechas += 1;
+      } catch {
+        fallidas += 1;
+      }
+    }
+    chip.classList.remove('show');
+    await refreshLibrary();
+    renderNowPlaying();
+    const primera = ids.length === 1 ? getTrack(ids[0]) : null;
+    if (primera?.bpm) {
+      toast(`${Math.round(primera.bpm)} pulsaciones por minuto${primera.tonalidad ? ` · ${primera.tonalidad}` : ''}`);
+    } else if (hechas) {
+      toast(`${plural(hechas, 'canción analizada', 'canciones analizadas')}${fallidas ? ` · ${fallidas} con error` : ''}`);
+    } else {
+      toast('No he podido analizar el audio.');
+    }
+  },
+
+  /**
    * Corregir etiquetas. Con una canción se editan todos los campos; con varias,
    * solo los que se comparten, y lo que se deje en blanco no se toca —así se
    * arregla el álbum de veinte canciones sin machacarles el título.
@@ -351,23 +444,68 @@ const actions = {
     const valores = await dialog({
       title: varias ? `Corregir ${plural(ids.length, 'canción', 'canciones')}` : 'Corregir la información',
       message: varias
-        ? 'Lo que dejes en blanco se queda como está. Los archivos de tu disco no se tocan: la corrección vive en Pletina.'
-        : 'Los archivos de tu disco no se tocan: la corrección vive en Pletina y sobrevive a los reanálisis.',
+        ? 'Lo que dejes en blanco se queda como está.'
+        : [track.bpm ? `${Math.round(track.bpm)} pulsaciones por minuto` : null,
+          track.tonalidad || null].filter(Boolean).join(' · ') || null,
       fields: campos,
+      check: {
+        name: 'escribir',
+        label: 'Escribir también dentro del archivo (MP3 y WAV). Si lo dejas sin marcar, la corrección solo vive en Pletina y tu música no se toca.',
+        value: state.escribirEtiquetas,
+      },
       ok: 'Guardar',
     });
     if (!valores) return;
 
+    const { escribir, ...campos1 } = valores;
     // Con varias canciones, un campo vacío significa «no lo toques».
     const patch = varias
-      ? Object.fromEntries(Object.entries(valores).filter(([, v]) => v !== ''))
-      : valores;
-    if (!Object.keys(patch).length) return;
+      ? Object.fromEntries(Object.entries(campos1).filter(([, v]) => v !== ''))
+      : campos1;
+    if (!Object.keys(patch).length && !escribir) return;
 
-    const resultado = await api.track.edit(ids, patch);
+    if (escribir !== state.escribirEtiquetas) {
+      state.escribirEtiquetas = escribir;
+      persist({ escribirEtiquetas: escribir });
+    }
+
+    const resultado = await api.track.edit(ids, patch, { escribir });
     await refreshLibrary();
     renderNowPlaying();
-    toast(resultado.edited > 1 ? `${plural(resultado.edited, 'canción corregida', 'canciones corregidas')}` : 'Información corregida');
+    contarEscritura(resultado.archivos, resultado.edited);
+  },
+
+  /** Poner una imagen como carátula, con la misma casilla de «escribir o no». */
+  async setCover(ids) {
+    const resultado = await api.track.cover(ids, { escribir: state.escribirEtiquetas });
+    if (resultado.canceled) return;
+    if (!resultado.ok) {
+      toast(resultado.error ? `No he podido usar esa imagen: ${resultado.error}` : 'No he podido usar esa imagen.');
+      return;
+    }
+    await refreshLibrary();
+    renderNowPlaying();
+    contarEscritura(resultado.archivos, 0, 'Carátula puesta');
+  },
+
+  async clearCover(ids) {
+    await api.track.clearCover(ids);
+    await refreshLibrary();
+    renderNowPlaying();
+    toast('Carátula quitada');
+  },
+
+  /** Bajar al archivo lo que ya está corregido en Pletina. */
+  async writeToFiles(ids) {
+    const ok = await dialog({
+      title: ids.length > 1 ? `¿Escribir en ${plural(ids.length, 'archivo', 'archivos')}?` : '¿Escribir en el archivo?',
+      message: 'Se modifican los archivos de tu disco: se guarda una copia de seguridad al lado de cada uno, con la extensión .pletina-bak. Solo funciona en MP3 y WAV.',
+      ok: 'Escribir',
+    });
+    if (!ok) return;
+    const resultado = await api.track.write(ids);
+    await refreshLibrary();
+    contarEscritura(resultado, 0, 'Nada que escribir');
   },
 
   async restoreTags(ids) {
@@ -406,6 +544,28 @@ const actions = {
     else state.sort = { key, dir: key === 'added' || key === 'lastPlayed' || key === 'plays' ? 'desc' : 'asc' };
     persist({ sort: state.sort });
     renderStage();
+  },
+
+  /** Orden de las rejillas de álbumes y artistas. */
+  sortGrid(key, toggle = false) {
+    const destino = state.view.type === 'albums' ? 'ordenAlbumes' : 'ordenArtistas';
+    if (toggle) state[destino] = { ...state[destino], dir: state[destino].dir === 'asc' ? 'desc' : 'asc' };
+    else state[destino] = { key, dir: 'asc' };
+    persist({ [destino]: state[destino] });
+    renderStage();
+  },
+
+  /** Reordena una lista de forma permanente por un criterio. */
+  async reorderPlaylistBy(key) {
+    const playlist = playlistById(state.view.id);
+    if (!playlist) return;
+    const canciones = playlist.trackIds.map((id) => getTrack(id)).filter(Boolean);
+    const dir = key === 'added' || key === 'plays' || key === 'lastPlayed' ? 'desc' : 'asc';
+    const ids = sortTracks(canciones, key, dir, opcionesDeOrden()).map((t) => t.id);
+    playlist.trackIds = ids;
+    renderStage();
+    await api.playlists.update(playlist.id, { trackIds: ids });
+    toast('Lista reordenada. Puedes seguir ajustándola arrastrando.');
   },
 
   selectionChanged() {
@@ -462,6 +622,9 @@ const actions = {
         state.sort.dir = state.sort.dir === 'asc' ? 'desc' : 'asc';
         persist({ sort: state.sort });
         renderStage();
+        break;
+      case 'grid-dir':
+        actions.sortGrid(null, true);
         break;
       case 'back':
         actions.navigate({ type: state.view.type === 'album' ? 'albums' : 'artists' });
@@ -647,6 +810,28 @@ const queueActions = {
   },
 };
 
+const sonidoActions = {
+  cambiarEq(cambio) {
+    state.eq = { ...state.eq, ...cambio };
+    player.aplicarEcualizador(state.eq);
+    persist({ eq: state.eq });
+    syncToggles(appInfo);
+  },
+  cambiarFundido(segundos) {
+    state.crossfade = segundos;
+    persist({ crossfade: segundos });
+  },
+  cambiarAutomezcla(activada) {
+    state.automix = activada;
+    persist({ automix: activada });
+  },
+  cambiarNormalizar(activada) {
+    state.normalize = activada;
+    player.applyVolume();
+    persist({ normalize: activada });
+  },
+};
+
 const transportActions = {
   toggle: togglePlay,
   next: () => next(false),
@@ -683,6 +868,7 @@ const transportActions = {
     syncToggles(appInfo);
     renderQueue();
   },
+  abrirSonido: (ancla) => abrirSonido(ancla),
   toggleTheme() {
     const theme = appInfo.dark ? 'light' : 'dark';
     appInfo.dark = !appInfo.dark;
@@ -781,6 +967,7 @@ function onKeyDown(event) {
       break;
     case 'Escape':
       closePop();
+      cerrarSonido();
       if (state.selection.size) {
         clearSelection();
         actions.selectionChanged();
@@ -809,6 +996,25 @@ function onCommand(payload) {
     case 'toggle:shuffle': setShuffle(!state.shuffle); break;
     case 'toggle:repeat': transportActions.cycleRepeat(); break;
     case 'toggle:queue': transportActions.toggleQueue(); break;
+    case 'toggle:visualizador': {
+      const activo = alternarVisualizador(!state.visualizador);
+      persist({ visualizador: activo });
+      syncToggles(appInfo);
+      if (!activo) toast('Visualizador apagado');
+      else if (!player.hayMotor()) toast('Este equipo no permite el visualizador.');
+      break;
+    }
+    case 'abrir:sonido':
+      abrirSonido($('#btn-sonido'));
+      break;
+    case 'toggle:articulos':
+      state.ignorarArticulos = !state.ignorarArticulos;
+      persist({ ignorarArticulos: state.ignorarArticulos });
+      renderStage();
+      toast(state.ignorarArticulos
+        ? 'Al ordenar, «Los Planetas» va por la P'
+        : 'Al ordenar, «Los Planetas» va por la L');
+      break;
     case 'toggle:normalize':
       state.normalize = !state.normalize;
       player.applyVolume();
@@ -924,9 +1130,17 @@ async function boot() {
     shuffle: Boolean(settings.shuffle),
     repeat: settings.repeat ?? 'off',
     normalize: Boolean(settings.normalize),
+    escribirEtiquetas: Boolean(settings.escribirEtiquetas),
     queueOpen: Boolean(settings.queueOpen),
+    visualizador: Boolean(settings.visualizador),
     sort: settings.sort ?? { key: 'added', dir: 'desc' },
+    eq: settings.eq ?? { activado: false, preset: 'plano', bandas: new Array(10).fill(0), preamp: 0 },
+    crossfade: Number(settings.crossfade) || 0,
+    automix: Boolean(settings.automix),
     view: settings.view ?? { type: 'library', id: null },
+    ordenAlbumes: settings.ordenAlbumes ?? { key: 'artista', dir: 'asc' },
+    ordenArtistas: settings.ordenArtistas ?? { key: 'nombre', dir: 'asc' },
+    ignorarArticulos: settings.ignorarArticulos !== false,
   });
 
   bindRail(railActions);
@@ -934,6 +1148,8 @@ async function boot() {
   bindQueue(queueActions);
   bindTransport(transportActions);
   bindDrop();
+  bindSonido(sonidoActions);
+  montarVisualizador(player.engine());
 
   player.onPlayer({
     onEnded: () => next(true),
@@ -959,11 +1175,17 @@ async function boot() {
     onPositionSave: (trackId, position) => {
       if (trackId) persist({ last: { trackId, position } });
     },
+    // El fundido se desactiva con el temporizador «al terminar esta canción»:
+    // encadenar sería justo lo contrario de lo que se ha pedido.
+    margenDeFundido: () => (dormir.alTerminar ? 0 : state.crossfade),
+    onCercaDelFinal: encadenarSiguiente,
   });
   player.bindMediaSession({ next: () => next(false), prev });
   player.applyVolume();
+  player.aplicarEcualizador(state.eq);
 
   await refreshLibrary({ keepScroll: false });
+  if (state.visualizador) alternarVisualizador(true);
   syncToggles(appInfo);
   renderPlayState();
   renderNowPlaying();

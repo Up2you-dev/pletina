@@ -3,6 +3,8 @@ import {
   compareByDisc,
   groupByAlbum,
   groupByArtist,
+  ordenarAlbumes,
+  ordenarArtistas,
   matchesTerms,
   normalize,
   queryTerms,
@@ -22,6 +24,9 @@ export const state = {
 
   view: { type: 'library', id: null, key: null },
   sort: { key: 'added', dir: 'desc' },
+  ordenAlbumes: { key: 'artista', dir: 'asc' },
+  ordenArtistas: { key: 'nombre', dir: 'asc' },
+  ignorarArticulos: true,
   query: '',
   terms: [],
 
@@ -34,6 +39,11 @@ export const state = {
   shuffle: false,
   repeat: 'off',
   normalize: false,
+  eq: { activado: false, preset: 'plano', bandas: new Array(10).fill(0), preamp: 0 },
+  crossfade: 0,
+  automix: false,
+  visualizador: false,
+  escribirEtiquetas: false,
 
   queueOpen: false,
   selection: new Set(),
@@ -66,12 +76,22 @@ export function setQuery(query) {
   state.terms = queryTerms(query);
 }
 
+export const opcionesDeOrden = () => ({ ignorarArticulos: state.ignorarArticulos });
+
 const filtered = (list) => (state.terms.length ? list.filter((t) => matchesTerms(t, state.terms)) : list);
 
 export const favorites = () => state.tracks.filter((t) => t.favorite);
 export const missingTracks = () => state.tracks.filter((t) => t.missing);
-export const albums = () => (cache.albums ??= groupByAlbum(state.tracks));
-export const artists = () => (cache.artists ??= groupByArtist(state.tracks));
+export const albums = () => ordenarAlbumes(
+  (cache.albums ??= groupByAlbum(state.tracks)),
+  state.ordenAlbumes.key,
+  state.ordenAlbumes.dir,
+);
+export const artists = () => ordenarArtistas(
+  (cache.artists ??= groupByArtist(state.tracks)),
+  state.ordenArtistas.key,
+  state.ordenArtistas.dir,
+);
 
 export function albumByKey(key) {
   return albums().find((album) => album.key === key) ?? null;
@@ -102,13 +122,13 @@ export function visibleTracks() {
       return artist ? filtered(artist.tracks) : [];
     }
     case 'favorites':
-      return sortTracks(filtered(favorites()), sort.key, sort.dir);
+      return sortTracks(filtered(favorites()), sort.key, sort.dir, opcionesDeOrden());
     case 'recent':
       return sortTracks(filtered(state.tracks.filter((t) => t.lastPlayedAt > 0)), 'lastPlayed', 'desc').slice(0, 200);
     case 'missing':
-      return sortTracks(filtered(missingTracks()), sort.key, sort.dir);
+      return sortTracks(filtered(missingTracks()), sort.key, sort.dir, opcionesDeOrden());
     default:
-      return sortTracks(filtered(state.tracks), sort.key, sort.dir);
+      return sortTracks(filtered(state.tracks), sort.key, sort.dir, opcionesDeOrden());
   }
 }
 

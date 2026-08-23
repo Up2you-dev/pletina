@@ -48,6 +48,12 @@ describe('formatQuality', () => {
     expect(formatQuality({ codec: 'MPEG 1 Layer 3' })).toBe('MPEG 1 LAYER 3');
     expect(formatQuality({})).toBe('');
   });
+
+  it('añade tempo y tonalidad cuando se han analizado', () => {
+    expect(formatQuality({ codec: 'flac', bpm: 128.4, key: 'Am' })).toBe('FLAC · 128 bpm · Am');
+    // Sin analizar, ni se mencionan.
+    expect(formatQuality({ codec: 'flac', bpm: 0, key: '' })).toBe('FLAC');
+  });
 });
 
 describe('formatWhen', () => {
