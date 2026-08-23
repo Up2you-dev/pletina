@@ -394,6 +394,10 @@ const actions = {
    * cambiar dos es tiempo tirado.
    */
   async analizar(ids, { forzar = false, silencio = false } = {}) {
+    if (!ids?.length) {
+      if (!silencio) toast('No hay nada que analizar.');
+      return null;
+    }
     const motor = player.engine();
     if (!motor) {
       toast('Este equipo no permite analizar el audio.');

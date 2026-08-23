@@ -110,8 +110,16 @@ export function planDeMezcla({
   if (restante < duracion) {
     avisos.push('La canción que sale se acaba antes de terminar la transición: se acorta.');
   }
+  // Y lo mismo por el otro lado: si la que entra es corta —una intro, un
+  // interludio—, la transición no puede durar más que ella.
+  const cabeEntrante = Number(entrante?.duracion)
+    ? redondear(entrante.duracion - inicioEntrante)
+    : Infinity;
+  if (cabeEntrante < duracion) {
+    avisos.push('La canción que entra es más corta que la transición: se acorta.');
+  }
   // Acortar sí, descuadrar no: lo que se recorta se recorta por compases.
-  const bruto = Math.min(duracion, restante);
+  const bruto = Math.min(duracion, restante, cabeEntrante);
   const enCompases = compasSegundos > 0 ? Math.floor(bruto / compasSegundos) * compasSegundos : 0;
   const duracionReal = redondear(Math.max(1, enCompases || bruto));
 
@@ -164,7 +172,7 @@ export function planDeMezcla({
     // CUÁNDO lanzar la mezcla tiene que mirar esta: si mira la recortada, cada
     // vuelta la acorta un poco más y acaba mezclando en un compás.
     duracionPlena: duracion,
-    compases: compasSegundos > 0 ? Math.round(duracionReal / compasSegundos) : compases,
+    compases: compasSegundos > 0 ? Math.max(1, Math.round(duracionReal / compasSegundos)) : compases,
     compasSegundos: redondear(compasSegundos),
     porFrases,
     estilo,

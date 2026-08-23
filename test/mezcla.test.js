@@ -249,6 +249,17 @@ describe('cuadrar como un pinchadiscos', () => {
     expect(plan.duracion).toBeLessThanOrEqual(71.4 - plan.arranque + 0.001);
   });
 
+  it('si la que entra es corta, la transición se acorta también por ese lado', () => {
+    const plan = planDeMezcla({
+      ...base,
+      entrante: { ...base.entrante, duracion: 9, rejilla: rejilla(126) },
+      compases: 8,
+    });
+    expect(plan.avisos.join(' ')).toMatch(/más corta que la transición/);
+    expect(plan.duracion).toBeLessThanOrEqual(9);
+    expect(plan.compases).toBeGreaterThanOrEqual(1);
+  });
+
   it('la que entra también deja sitio en los medios hasta el cambio', () => {
     const plan = planDeMezcla(base);
     const medios = eventosDe(plan, 'entrante', 'medio');
