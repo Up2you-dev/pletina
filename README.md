@@ -15,11 +15,17 @@ programación instalado: en la pestaña **Actions › Instaladores › Run workf
 de este repositorio se construyen los tres sistemas a la vez, y al terminar
 cuelgan de esa misma ejecución, en *Artifacts*:
 
-| | |
+| Artefacto | Qué trae |
 |---|---|
-| **Windows** | `Pletina Setup 1.0.0.exe` — instalador normal. También hay `Pletina 1.0.0.exe` (portable, no instala nada) y `Pletina-1.0.0-win.zip` (se descomprime y se ejecuta `Pletina.exe`) |
-| macOS | `Pletina-1.0.0-arm64.dmg` — abrir y arrastrar a Aplicaciones |
-| Linux | `Pletina-1.0.0.AppImage` (`chmod +x` y doble clic) o el `.deb` |
+| **`pletina-windows-instalador`** | `Pletina Setup 1.0.0.exe`, el instalador de toda la vida (x64 y arm64) |
+| `pletina-windows-sin-instalar` | `Pletina 1.0.0.exe` portable y el `.zip` que se descomprime y se ejecuta |
+| `pletina-macos` | `Pletina-1.0.0-arm64.dmg` — abrir y arrastrar a Aplicaciones |
+| `pletina-linux` | `Pletina-1.0.0.AppImage` (`chmod +x` y doble clic) y el `.deb` |
+
+Al lanzarlo a mano se elige un solo sistema —Windows por defecto— y se enciende
+una sola máquina. Publicar una etiqueta `v1.2.3` construye los tres y además
+cuelga los archivos sueltos en la página de versiones, que es de donde se
+descargan de uno en uno.
 
 Al ser paquetes **sin firmar**, la primera vez Windows enseña la pantalla azul de
 SmartScreen: *Más información* › *Ejecutar de todas formas*. Solo la primera vez,

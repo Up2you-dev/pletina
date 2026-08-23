@@ -60,14 +60,67 @@ jobs:
         env:
           # Sin certificado no hay nada que descubrir: que no lo intente.
           CSC_IDENTITY_AUTO_DISCOVERY: false
-      - uses: actions/upload-artifact@v4
+      # Un solo paquete con todo obliga a descargar 450 MB para usar 95. Se
+      # separa lo que se instala de lo que se ejecuta tal cual.
+      - name: Instalador de Windows
+        if: matrix.clave == 'windows'
+        uses: actions/upload-artifact@v4
         with:
-          name: pletina-${{ matrix.clave }}
+          name: pletina-windows-instalador
+          retention-days: 30
+          if-no-files-found: error
+          path: release/*Setup*.exe
+
+      - name: Windows sin instalar
+        if: matrix.clave == 'windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pletina-windows-sin-instalar
           retention-days: 30
           if-no-files-found: error
           path: |
             release/*.exe
+            !release/*Setup*.exe
             release/*.zip
-            release/*.dmg
+
+      - name: Paquete de macOS
+        if: matrix.clave == 'macos'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pletina-macos
+          retention-days: 30
+          if-no-files-found: error
+          path: release/*.dmg
+
+      - name: Paquetes de Linux
+        if: matrix.clave == 'linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pletina-linux
+          retention-days: 30
+          if-no-files-found: error
+          path: |
             release/*.AppImage
             release/*.deb
+
+  # Una etiqueta `v1.2.3` publica los instaladores como archivos sueltos, que es
+  # como se descargan de uno en uno en vez de dentro de un zip de zips.
+  publicar:
+    name: Publicar la versión
+    needs: construir
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: paquetes
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Pletina $GITHUB_REF_NAME" \
+            --generate-notes \
+            $(find paquetes -type f | sort)
