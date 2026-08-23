@@ -2,7 +2,7 @@ name: Instaladores
 
 # Se lanza a mano (pestaña Actions › Instaladores › Run workflow) o al publicar
 # una etiqueta `v1.2.3`. Cada sistema se construye en su propia máquina: un .dmg
-# solo sale de un Mac.
+# solo sale de un Mac y el instalador de Windows solo de Windows.
 on:
   workflow_dispatch:
     inputs:
@@ -15,31 +15,40 @@ on:
     tags: ['v*']
 
 jobs:
+  # En un repositorio privado un minuto de macOS cuenta como diez y uno de
+  # Windows como dos, así que la matriz se decide antes de encender nada.
+  preparar:
+    name: Decidir qué se construye
+    runs-on: ubuntu-latest
+    outputs:
+      matriz: ${{ steps.elegir.outputs.matriz }}
+    steps:
+      - id: elegir
+        shell: bash
+        env:
+          SOLO: ${{ inputs.solo }}
+        run: |
+          todos='[
+            {"clave":"windows","os":"windows-latest","nombre":"Windows (.exe)","comando":"dist:win"},
+            {"clave":"macos","os":"macos-latest","nombre":"macOS (.dmg)","comando":"dist:mac"},
+            {"clave":"linux","os":"ubuntu-latest","nombre":"Linux (AppImage y .deb)","comando":"dist:linux"}
+          ]'
+          if [ -z "$SOLO" ] || [ "$SOLO" = "todos" ]; then
+            elegida=$(echo "$todos" | jq -c .)
+          else
+            elegida=$(echo "$todos" | jq -c --arg s "$SOLO" '[.[] | select(.clave == $s)]')
+          fi
+          echo "matriz=$elegida" >> "$GITHUB_OUTPUT"
+          echo "Se construirá: $elegida"
+
   construir:
     name: ${{ matrix.nombre }}
+    needs: preparar
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - clave: windows
-            os: windows-latest
-            nombre: Windows (.exe)
-            comando: dist:win
-          - clave: macos
-            os: macos-latest
-            nombre: macOS (.dmg)
-            comando: dist:mac
-          - clave: linux
-            os: ubuntu-latest
-            nombre: Linux (AppImage y .deb)
-            comando: dist:linux
-    # Al lanzarlo a mano se puede pedir un solo sistema: en un repositorio
-    # privado, un minuto de macOS cuenta como diez y uno de Windows como dos.
-    if: >-
-      github.event_name != 'workflow_dispatch'
-      || inputs.solo == 'todos'
-      || inputs.solo == matrix.clave
+        include: ${{ fromJSON(needs.preparar.outputs.matriz) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -53,12 +62,12 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
       - uses: actions/upload-artifact@v4
         with:
-          name: pletina-${{ runner.os }}
+          name: pletina-${{ matrix.clave }}
           retention-days: 30
           if-no-files-found: error
           path: |
-            release/*.dmg
             release/*.exe
             release/*.zip
+            release/*.dmg
             release/*.AppImage
             release/*.deb
