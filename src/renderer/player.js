@@ -60,6 +60,7 @@ export function onPlayer(handlers) {
 }
 
 export const engine = () => motor;
+export const hayMotor = () => Boolean(motor);
 export const mezclando = () => encadenando;
 /** El plato que está sonando, para que el mezclador sepa dónde va. */
 export const platoActivo = () => ({
@@ -121,7 +122,6 @@ export function ajustarVelocidad(velocidad, preservarTono = tempo.preservarTono)
   aplicarTempo(plato());
   return tempoActual();
 }
-export const hayMotor = () => Boolean(motor);
 
 /* ------------------------------------------------------------------ volumen */
 
