@@ -5,6 +5,12 @@ name: Instaladores
 # solo sale de un Mac.
 on:
   workflow_dispatch:
+    inputs:
+      solo:
+        description: Qué sistema construir
+        type: choice
+        default: windows
+        options: [windows, macos, linux, todos]
   push:
     tags: ['v*']
 
@@ -16,15 +22,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
-            nombre: macOS (.dmg)
-            comando: dist:mac
-          - os: windows-latest
+          - clave: windows
+            os: windows-latest
             nombre: Windows (.exe)
             comando: dist:win
-          - os: ubuntu-latest
+          - clave: macos
+            os: macos-latest
+            nombre: macOS (.dmg)
+            comando: dist:mac
+          - clave: linux
+            os: ubuntu-latest
             nombre: Linux (AppImage y .deb)
             comando: dist:linux
+    # Al lanzarlo a mano se puede pedir un solo sistema: en un repositorio
+    # privado, un minuto de macOS cuenta como diez y uno de Windows como dos.
+    if: >-
+      github.event_name != 'workflow_dispatch'
+      || inputs.solo == 'todos'
+      || inputs.solo == matrix.clave
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
