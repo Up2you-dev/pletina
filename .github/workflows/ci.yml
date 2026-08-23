@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verificar:
+    name: Lint, pruebas y arranque real
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      # Levanta la aplicación de verdad y falla si el renderizador escupe un
+      # solo error por consola. El script usa xvfb-run solo cuando no hay
+      # escritorio, que es justo el caso del ejecutor.
+      - run: npm run smoke

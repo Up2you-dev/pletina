@@ -1,0 +1,84 @@
+<!-- Servido por el esquema pletina:// — nunca desde file://, para que la CSP valga de algo. -->
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' pletina-media: data:; media-src 'self' pletina-media:; connect-src 'self'">
+<title>Pletina</title>
+<link rel="stylesheet" href="./assets/fonts/fonts.css">
+<link rel="stylesheet" href="./styles.css">
+
+<div class="app" id="app">
+  <header class="topbar" id="topbar">
+    <button class="icon-btn only-win" id="btn-menu" aria-label="Menú de la aplicación"></button>
+    <div class="brand" id="brand">
+      <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
+      <h1>pletina</h1>
+    </div>
+    <div class="search">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="6"/><path d="M13.4 13.4 17 17"/></svg>
+      <input id="q" type="search" placeholder="Buscar por título, artista o álbum" aria-label="Buscar en la biblioteca" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="spacer"></div>
+    <div class="progress-chip" id="chip" role="status" aria-live="polite">
+      <span class="spin" aria-hidden="true"></span><span id="chip-text"></span>
+      <button class="chip-stop" id="chip-stop" aria-label="Detener el análisis">&times;</button>
+    </div>
+    <button class="btn btn-primary" id="add-btn">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      Añadir música
+    </button>
+    <button class="icon-btn" id="btn-queue" aria-label="Cola de reproducción" aria-pressed="false"></button>
+    <button class="icon-btn" id="btn-theme" aria-label="Cambiar entre claro y oscuro"></button>
+  </header>
+
+  <nav class="rail" id="rail" aria-label="Colecciones"></nav>
+
+  <main class="stage" id="stage">
+    <div class="stage-head" id="stage-head"></div>
+    <div id="warn-slot"></div>
+    <div id="stage-body"></div>
+  </main>
+
+  <aside class="queue-panel" id="queue-panel" aria-label="Cola de reproducción" hidden></aside>
+
+  <footer class="transport">
+    <div class="transport-inner">
+      <div class="now">
+        <div class="art" id="art"><span class="ph" id="art-ph">&#9834;</span></div>
+        <div class="now-text">
+          <div class="now-title" id="now-title">Nada sonando</div>
+          <div class="now-artist" id="now-artist">Añade música para empezar</div>
+        </div>
+        <button class="icon-btn heart" id="btn-fav" aria-label="Marcar como favorita" aria-pressed="false"></button>
+      </div>
+      <div class="center">
+        <div class="controls">
+          <button class="icon-btn" id="btn-shuffle" aria-label="Orden aleatorio" aria-pressed="false"></button>
+          <button class="icon-btn" id="btn-prev" aria-label="Anterior"></button>
+          <button class="play-btn" id="btn-play" aria-label="Reproducir"></button>
+          <button class="icon-btn" id="btn-next" aria-label="Siguiente"></button>
+          <button class="icon-btn" id="btn-repeat" aria-label="Repetir: desactivado"></button>
+        </div>
+        <div class="seek-line">
+          <span class="time" id="t-cur">0:00</span>
+          <input type="range" class="range" id="seek" min="0" max="1000" step="1" value="0" aria-label="Posición de la canción">
+          <span class="time r" id="t-dur">0:00</span>
+        </div>
+      </div>
+      <div class="right-tools">
+        <span class="quality" id="quality"></span>
+        <button class="icon-btn" id="btn-mute" aria-label="Silenciar"></button>
+        <input type="range" class="range vol" id="vol" min="0" max="100" step="1" value="90" aria-label="Volumen">
+        <button class="icon-btn" id="btn-help" aria-label="Atajos de teclado"></button>
+      </div>
+    </div>
+  </footer>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<div class="drop" id="drop" aria-hidden="true">
+  <div class="drop-card">
+    <strong>Suelta aquí tu música</strong>
+    <span>Archivos sueltos o carpetas enteras. Se quedan donde están.</span>
+  </div>
+</div>
+
+<script type="module" src="./app.js"></script>

@@ -1,0 +1,49 @@
+name: Instaladores
+
+# Se lanza a mano (pestaña Actions › Instaladores › Run workflow) o al publicar
+# una etiqueta `v1.2.3`. Cada sistema se construye en su propia máquina: un .dmg
+# solo sale de un Mac.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  construir:
+    name: ${{ matrix.nombre }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            nombre: macOS (.dmg)
+            comando: dist:mac
+          - os: windows-latest
+            nombre: Windows (.exe)
+            comando: dist:win
+          - os: ubuntu-latest
+            nombre: Linux (AppImage y .deb)
+            comando: dist:linux
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run ${{ matrix.comando }}
+        env:
+          # Sin certificado no hay nada que descubrir: que no lo intente.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pletina-${{ runner.os }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            release/*.dmg
+            release/*.exe
+            release/*.zip
+            release/*.AppImage
+            release/*.deb

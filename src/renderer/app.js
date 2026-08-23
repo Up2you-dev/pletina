@@ -1,0 +1,868 @@
+import {
+  advance,
+  createQueue,
+  dropManual,
+  enqueueLast,
+  enqueueNext,
+  reshuffle,
+  retreat,
+  withoutIds,
+} from '../shared/queue.js';
+import { plural } from '../shared/format.js';
+import * as player from './player.js';
+import {
+  albumByKey,
+  artistByKey,
+  canReorder,
+  clearSelection,
+  getTrack,
+  normalize,
+  playlistById,
+  normalizeView,
+  setQuery,
+  setTracks,
+  state,
+  visibleTracks,
+} from './state.js';
+import { $, closePop, dialog, esc, isDialogOpen, popover, toast } from './ui/dom.js';
+import { bindRail, playlistMenu, renderRail } from './ui/rail.js';
+import { bindStage, refreshRows, renderStage, renderStageHead, scrollToCurrent } from './ui/stage.js';
+import { bindQueue, renderQueue } from './ui/queue.js';
+import {
+  bindTransport,
+  helpPopover,
+  renderNowPlaying,
+  renderPlayState,
+  syncToggles,
+  tick,
+} from './ui/transport.js';
+
+const api = window.pletina;
+let appInfo = { version: '', electron: '', dataDir: '', dark: false };
+let countedFor = null;
+
+/* ------------------------------------------------------------- repintados */
+
+const renderAll = () => {
+  renderRail();
+  renderStage();
+  renderQueue();
+};
+
+function persist(patch) {
+  api.settings.patch(patch);
+}
+
+async function refreshLibrary({ keepScroll = true } = {}) {
+  const snapshot = await api.library.snapshot();
+  const scroll = keepScroll ? $('#stage').scrollTop : 0;
+  setTracks(snapshot.tracks);
+  state.playlists = snapshot.playlists;
+  state.folders = snapshot.folders;
+  // Lo que ya no exista sale de la cola y de la selección.
+  state.queue = withoutIds(state.queue, state.queue.order.filter((id) => !state.byId.has(id)));
+  for (const id of [...state.selection]) if (!state.byId.has(id)) state.selection.delete(id);
+  if (state.currentId && !state.byId.has(state.currentId)) {
+    player.stop();
+    state.currentId = null;
+  }
+  normalizeView();
+  renderAll();
+  renderNowPlaying();
+  if (keepScroll) $('#stage').scrollTop = scroll;
+}
+
+/* ----------------------------------------------------------- reproducción */
+
+function loadAndPlay(id, { play = true, position = 0 } = {}) {
+  countedFor = null;
+  if (!player.load(id, { play, position })) return;
+  const next = [...state.queue.manual, ...state.queue.order.slice(state.queue.index + 1)][0];
+  player.warmNext(next);
+  renderNowPlaying();
+  refreshRows();
+  renderQueue();
+  persist({ last: { trackId: id, position } });
+}
+
+function playIds(ids, startId) {
+  if (!ids.length) return;
+  state.queue = createQueue(ids, { startId: startId ?? ids[0], shuffled: state.shuffle });
+  loadAndPlay(state.queue.order[state.queue.index]);
+}
+
+function playFromView(id) {
+  const ids = visibleTracks().map((track) => track.id);
+  playIds(ids.includes(id) ? ids : [id], id);
+}
+
+function next(auto = false) {
+  const result = advance(state.queue, { repeat: state.repeat, auto });
+  state.queue = result.queue;
+  if (result.restart) return player.restart();
+  if (!result.id) {
+    player.pause();
+    player.seekTo(0);
+    renderQueue();
+    return undefined;
+  }
+  loadAndPlay(result.id);
+  return undefined;
+}
+
+function prev() {
+  const result = retreat(state.queue, player.currentTime());
+  state.queue = result.queue;
+  if (result.restart) return player.seekTo(0);
+  loadAndPlay(result.id);
+  return undefined;
+}
+
+function togglePlay() {
+  if (!state.currentId) {
+    const list = visibleTracks();
+    if (!list.length) {
+      toast('Añade música para empezar.');
+      return;
+    }
+    playFromView(list[0].id);
+    return;
+  }
+  player.toggle();
+}
+
+function setShuffle(value) {
+  state.shuffle = value;
+  persist({ shuffle: value });
+  if (state.queue.order.length) {
+    state.queue = reshuffle(state.queue, state.currentId, { shuffled: value });
+  }
+  syncToggles(appInfo);
+  renderQueue();
+}
+
+/* --------------------------------------------------------------- acciones */
+
+async function withPlaylistPrompt(ids) {
+  const name = await dialog({
+    title: 'Nueva lista',
+    message: ids.length > 1 ? `Se creará con ${plural(ids.length, 'canción', 'canciones')} dentro.` : null,
+    input: 'Nombre',
+    value: 'Mi lista',
+    ok: 'Crear',
+  });
+  if (!name) return;
+  const playlist = await api.playlists.create(name, ids);
+  await refreshLibrary({ keepScroll: false });
+  state.view = { type: 'playlist', id: playlist.id };
+  renderAll();
+  toast(`Lista «${playlist.name}» creada`);
+}
+
+const actions = {
+  navigate(view) {
+    state.view = { id: null, key: null, ...view };
+    clearSelection();
+    $('#stage').scrollTop = 0;
+    renderAll();
+  },
+
+  play: (id) => playFromView(id),
+
+  playOrPause(id) {
+    if (state.currentId === id) player.toggle();
+    else playFromView(id);
+  },
+
+  enqueueNext(ids) {
+    state.queue = enqueueNext(state.queue, ids);
+    renderQueue();
+    toast(ids.length > 1 ? `${plural(ids.length, 'canción', 'canciones')} a continuación` : 'Sonará a continuación');
+  },
+
+  enqueueLast(ids) {
+    state.queue = enqueueLast(state.queue, ids);
+    renderQueue();
+    toast(ids.length > 1 ? `${plural(ids.length, 'canción', 'canciones')} al final de la cola` : 'Añadida al final de la cola');
+  },
+
+  async setFavorite(ids, value) {
+    for (const id of ids) {
+      const track = getTrack(id);
+      if (!track) continue;
+      track.favorite = value;
+      await api.track.patch(id, { favorite: value });
+    }
+    renderRail();
+    if (state.view.type === 'favorites') renderStage();
+    else refreshRows();
+    renderNowPlaying();
+  },
+
+  async addToPlaylist(playlistId, ids) {
+    const result = await api.playlists.add(playlistId, ids);
+    await refreshLibrary();
+    const name = playlistById(playlistId)?.name ?? 'la lista';
+    if (!result?.added) toast(`Ya estaba${ids.length > 1 ? 'n' : ''} en «${name}»`);
+    else toast(`${plural(result.added, 'canción añadida', 'canciones añadidas')} a «${name}»`);
+  },
+
+  newPlaylistWith: (ids) => withPlaylistPrompt(ids),
+
+  async removeFromPlaylist(ids) {
+    const playlist = playlistById(state.view.id);
+    if (!playlist) return;
+    const keep = playlist.trackIds.filter((id) => !ids.includes(id));
+    await api.playlists.update(playlist.id, { trackIds: keep });
+    await refreshLibrary();
+    toast(ids.length > 1 ? `${plural(ids.length, 'canción quitada', 'canciones quitadas')} de la lista` : 'Quitada de la lista');
+  },
+
+  async forget(ids) {
+    const single = ids.length === 1 ? getTrack(ids[0]) : null;
+    const ok = await dialog({
+      title: single ? `¿Quitar «${single.title}» de la biblioteca?` : `¿Quitar ${plural(ids.length, 'canción', 'canciones')}?`,
+      message: 'Desaparecen de Pletina y de todas las listas. El archivo sigue en tu disco, intacto.',
+      ok: 'Quitar',
+      danger: true,
+    });
+    if (!ok) return;
+    await api.library.removeTracks(ids);
+    clearSelection();
+    await refreshLibrary();
+    toast(ids.length > 1 ? `${plural(ids.length, 'canción quitada', 'canciones quitadas')}` : 'Canción quitada');
+  },
+
+  async trash(id) {
+    const result = await api.library.trash(id);
+    if (result.canceled) return;
+    if (!result.ok) {
+      toast('No he podido mover el archivo a la papelera.');
+      return;
+    }
+    await refreshLibrary();
+    toast('Archivo movido a la papelera');
+  },
+
+  reveal: (id) => api.library.reveal(id),
+
+  goToAlbum(track) {
+    const key = `${normalize(track.albumArtist || track.artist)} ${normalize(track.album || 'Sin álbum')}`;
+    if (albumByKey(key)) actions.navigate({ type: 'album', key });
+  },
+
+  goToArtist(track) {
+    const key = normalize(track.albumArtist || track.artist || 'Sin artista');
+    if (artistByKey(key)) actions.navigate({ type: 'artist', key });
+  },
+
+  openCard(kind, key) {
+    actions.navigate({ type: kind, key });
+  },
+
+  playCard(kind, key) {
+    const group = kind === 'album' ? albumByKey(key) : artistByKey(key);
+    if (!group) return;
+    playIds(group.tracks.map((track) => track.id));
+  },
+
+  sortBy(key, toggle = false) {
+    if (toggle && state.sort.key === key) state.sort.dir = state.sort.dir === 'asc' ? 'desc' : 'asc';
+    else state.sort = { key, dir: key === 'added' || key === 'lastPlayed' || key === 'plays' ? 'desc' : 'asc' };
+    persist({ sort: state.sort });
+    renderStage();
+  },
+
+  selectionChanged() {
+    refreshRows();
+    renderStageHead();
+  },
+
+  async moveInPlaylist(id, delta) {
+    if (!canReorder()) return;
+    const playlist = playlistById(state.view.id);
+    if (!playlist) return;
+    const ids = playlist.trackIds.slice();
+    const from = ids.indexOf(id);
+    const to = from + delta;
+    if (from === -1 || to < 0 || to >= ids.length) return;
+    ids.splice(to, 0, ids.splice(from, 1)[0]);
+    playlist.trackIds = ids;
+    renderStage();
+    $(`.row[data-id="${CSS.escape(id)}"]`)?.focus();
+    await api.playlists.update(playlist.id, { trackIds: ids });
+    renderRail();
+  },
+
+  async reorderInPlaylist(draggedId, targetId, after) {
+    if (!canReorder() || draggedId === targetId) return;
+    const playlist = playlistById(state.view.id);
+    if (!playlist) return;
+    const ids = playlist.trackIds.filter((id) => id !== draggedId);
+    const at = ids.indexOf(targetId);
+    ids.splice(after ? at + 1 : at, 0, draggedId);
+    playlist.trackIds = ids;
+    renderStage();
+    await api.playlists.update(playlist.id, { trackIds: ids });
+  },
+
+  async tool(name, element) {
+    const tracks = visibleTracks();
+    switch (name) {
+      case 'play-all':
+        if (!tracks.length) return;
+        if (state.shuffle) setShuffle(false);
+        playIds(tracks.map((track) => track.id));
+        break;
+      case 'shuffle-all': {
+        if (!tracks.length) return;
+        state.shuffle = true;
+        persist({ shuffle: true });
+        syncToggles(appInfo);
+        state.queue = createQueue(tracks.map((track) => track.id), { shuffled: true });
+        loadAndPlay(state.queue.order[0]);
+        break;
+      }
+      case 'dir':
+        state.sort.dir = state.sort.dir === 'asc' ? 'desc' : 'asc';
+        persist({ sort: state.sort });
+        renderStage();
+        break;
+      case 'back':
+        actions.navigate({ type: state.view.type === 'album' ? 'albums' : 'artists' });
+        break;
+      case 'add-folder':
+        await api.library.addFolders();
+        break;
+      case 'add-files':
+        await api.library.addFiles();
+        break;
+      case 'go-library':
+        actions.navigate({ type: 'library' });
+        break;
+      case 'clear-q':
+        $('#q').value = '';
+        setQuery('');
+        renderStage();
+        break;
+      case 'rescan':
+        api.library.rescan();
+        break;
+      case 'drop-missing': {
+        const ok = await dialog({
+          title: '¿Quitar las canciones que ya no están?',
+          message: 'Se borran de la biblioteca y de las listas. Si el disco vuelve a conectarse, se pueden añadir otra vez.',
+          ok: 'Quitar',
+          danger: true,
+        });
+        if (!ok) return;
+        const result = await api.library.removeMissing();
+        actions.navigate({ type: 'library' });
+        await refreshLibrary();
+        toast(`${plural(result.removed, 'canción quitada', 'canciones quitadas')}`);
+        break;
+      }
+      case 'pl-rename': {
+        const playlist = playlistById(state.view.id);
+        if (!playlist) return;
+        const name = await dialog({ title: 'Renombrar lista', input: 'Nombre', value: playlist.name, ok: 'Guardar' });
+        if (!name) return;
+        await api.playlists.update(playlist.id, { name });
+        await refreshLibrary();
+        break;
+      }
+      case 'pl-export': {
+        const result = await api.playlists.exportFile(state.view.id);
+        if (result?.ok) toast('Lista exportada');
+        break;
+      }
+      case 'pl-delete': {
+        const playlist = playlistById(state.view.id);
+        if (!playlist) return;
+        const ok = await dialog({
+          title: `¿Eliminar «${playlist.name}»?`,
+          message: 'Se borra la lista. Las canciones siguen en tu biblioteca.',
+          ok: 'Eliminar',
+          danger: true,
+        });
+        if (!ok) return;
+        await api.playlists.remove(playlist.id);
+        state.view = { type: 'library', id: null };
+        await refreshLibrary({ keepScroll: false });
+        toast('Lista eliminada');
+        break;
+      }
+      case 'sel-next':
+        actions.enqueueNext([...state.selection]);
+        break;
+      case 'sel-playlist':
+        actions.addToPlaylistMenu(element, [...state.selection]);
+        break;
+      case 'sel-clear':
+        clearSelection();
+        actions.selectionChanged();
+        break;
+      default:
+        break;
+    }
+  },
+
+  addToPlaylistMenu(anchor, ids) {
+    popover(anchor, [
+      { type: 'cap', label: 'Añadir a una lista' },
+      ...state.playlists.map((playlist) => ({
+        key: playlist.id,
+        label: playlist.name,
+        run: () => actions.addToPlaylist(playlist.id, ids),
+      })),
+      { key: 'new', label: 'Nueva lista…', run: () => withPlaylistPrompt(ids) },
+    ]);
+  },
+};
+
+/* --------------------------------------------------------- raíl y cola */
+
+const railActions = {
+  navigate: actions.navigate,
+  addToPlaylist: actions.addToPlaylist,
+  reorderPlaylists: async (ids) => {
+    state.playlists = ids.map((id) => playlistById(id)).filter(Boolean);
+    renderRail();
+    await api.playlists.reorder(ids);
+  },
+  newPlaylist: () => withPlaylistPrompt([]),
+  addFolder: () => api.library.addFolders(),
+  async removeFolder(folderPath) {
+    const ok = await dialog({
+      title: '¿Quitar esta carpeta?',
+      message: `${folderPath}\n\nSus canciones salen de la biblioteca. Los archivos no se tocan.`,
+      ok: 'Quitar',
+      danger: true,
+    });
+    if (!ok) return;
+    await api.library.removeFolder(folderPath);
+    await refreshLibrary({ keepScroll: false });
+    toast('Carpeta quitada de la biblioteca');
+  },
+  playlistMenu(anchor, id) {
+    playlistMenu(anchor, id, {
+      play: (playlist) => playIds(playlist.trackIds),
+      shuffle: (playlist) => {
+        setShuffle(true);
+        playIds(playlist.trackIds);
+      },
+      rename: async (playlist) => {
+        const name = await dialog({ title: 'Renombrar lista', input: 'Nombre', value: playlist.name, ok: 'Guardar' });
+        if (!name) return;
+        await api.playlists.update(playlist.id, { name });
+        await refreshLibrary();
+      },
+      exportFile: async (playlist) => {
+        const result = await api.playlists.exportFile(playlist.id);
+        if (result?.ok) toast('Lista exportada');
+      },
+      remove: async (playlist) => {
+        const ok = await dialog({
+          title: `¿Eliminar «${playlist.name}»?`,
+          message: 'Se borra la lista. Las canciones siguen en tu biblioteca.',
+          ok: 'Eliminar',
+          danger: true,
+        });
+        if (!ok) return;
+        await api.playlists.remove(playlist.id);
+        if (state.view.id === playlist.id) state.view = { type: 'library', id: null };
+        await refreshLibrary({ keepScroll: false });
+      },
+    });
+  },
+};
+
+const queueActions = {
+  close() {
+    state.queueOpen = false;
+    persist({ queueOpen: false });
+    syncToggles(appInfo);
+    renderQueue();
+  },
+  clearManual() {
+    state.queue = { ...state.queue, manual: [] };
+    renderQueue();
+  },
+  dropManual(index) {
+    state.queue = dropManual(state.queue, index);
+    renderQueue();
+  },
+  jump(index) {
+    state.queue = { ...state.queue, index };
+    loadAndPlay(state.queue.order[index]);
+  },
+};
+
+const transportActions = {
+  toggle: togglePlay,
+  next: () => next(false),
+  prev,
+  duration: () => player.duration(),
+  seekTo: (seconds) => player.seekTo(seconds),
+  toggleShuffle: () => setShuffle(!state.shuffle),
+  cycleRepeat() {
+    state.repeat = state.repeat === 'off' ? 'all' : state.repeat === 'all' ? 'one' : 'off';
+    persist({ repeat: state.repeat });
+    syncToggles(appInfo);
+    toast(state.repeat === 'off' ? 'Repetición desactivada' : state.repeat === 'all' ? 'Repetir toda la lista' : 'Repetir esta canción');
+  },
+  toggleMute() {
+    state.muted = !state.muted;
+    player.applyVolume();
+    persist({ muted: state.muted });
+    syncToggles(appInfo);
+  },
+  setVolume(value) {
+    state.volume = value;
+    if (state.muted && value > 0) state.muted = false;
+    player.applyVolume();
+    persist({ volume: value, muted: state.muted });
+    syncToggles(appInfo);
+  },
+  toggleFavorite() {
+    if (!state.currentId) return;
+    actions.setFavorite([state.currentId], !getTrack(state.currentId)?.favorite);
+  },
+  toggleQueue() {
+    state.queueOpen = !state.queueOpen;
+    persist({ queueOpen: state.queueOpen });
+    syncToggles(appInfo);
+    renderQueue();
+  },
+  toggleTheme() {
+    const theme = appInfo.dark ? 'light' : 'dark';
+    appInfo.dark = !appInfo.dark;
+    document.documentElement.dataset.theme = theme;
+    persist({ theme });
+    syncToggles(appInfo);
+  },
+  help: (anchor) => helpPopover(anchor, appInfo, popover),
+};
+
+/* -------------------------------------------------------------- teclado */
+
+function onKeyDown(event) {
+  if (isDialogOpen()) return;
+  const target = event.target;
+  const typing = target && (target.matches('input, select, textarea') || target.isContentEditable);
+  if (typing) {
+    if (event.key === 'Escape' && target.id === 'q') {
+      target.value = '';
+      setQuery('');
+      renderStage();
+      target.blur();
+    }
+    return;
+  }
+
+  const mod = event.metaKey || event.ctrlKey;
+  if (mod && event.key.toLowerCase() === 'a') {
+    event.preventDefault();
+    state.selection = new Set(visibleTracks().map((track) => track.id));
+    actions.selectionChanged();
+    return;
+  }
+  if (mod) return;
+  if (target?.closest?.('button') && (event.key === ' ' || event.key === 'Enter')) return;
+
+  switch (event.key) {
+    case ' ':
+      event.preventDefault();
+      togglePlay();
+      break;
+    case 'ArrowRight':
+      player.seekBy(5);
+      break;
+    case 'ArrowLeft':
+      player.seekBy(-5);
+      break;
+    case 'ArrowUp':
+      event.preventDefault();
+      transportActions.setVolume(Math.min(1, state.volume + 0.05));
+      break;
+    case 'ArrowDown':
+      event.preventDefault();
+      transportActions.setVolume(Math.max(0, state.volume - 0.05));
+      break;
+    case 'n':
+    case 'N':
+      next(false);
+      break;
+    case 'p':
+    case 'P':
+      prev();
+      break;
+    case 's':
+    case 'S':
+      setShuffle(!state.shuffle);
+      break;
+    case 'r':
+    case 'R':
+      transportActions.cycleRepeat();
+      break;
+    case 'q':
+    case 'Q':
+      transportActions.toggleQueue();
+      break;
+    case 'f':
+    case 'F':
+      transportActions.toggleFavorite();
+      break;
+    case 'g':
+    case 'G':
+      scrollToCurrent();
+      break;
+    case '/':
+      event.preventDefault();
+      $('#q').focus();
+      break;
+    case 'Delete':
+    case 'Backspace':
+      if (state.selection.size) {
+        event.preventDefault();
+        const ids = [...state.selection];
+        if (state.view.type === 'playlist') actions.removeFromPlaylist(ids);
+        else actions.forget(ids);
+      }
+      break;
+    case 'Escape':
+      closePop();
+      if (state.selection.size) {
+        clearSelection();
+        actions.selectionChanged();
+      }
+      break;
+    default:
+      break;
+  }
+}
+
+/* ------------------------------------------------------- órdenes del menú */
+
+function onCommand({ name, paths }) {
+  switch (name) {
+    case 'play:toggle': togglePlay(); break;
+    case 'play:next': next(false); break;
+    case 'play:prev': prev(); break;
+    case 'play:pause': player.pause(); break;
+    case 'play:stop': player.pause(); player.seekTo(0); break;
+    case 'seek:forward': player.seekBy(10); break;
+    case 'seek:back': player.seekBy(-10); break;
+    case 'volume:up': transportActions.setVolume(Math.min(1, state.volume + 0.05)); break;
+    case 'volume:down': transportActions.setVolume(Math.max(0, state.volume - 0.05)); break;
+    case 'volume:mute': transportActions.toggleMute(); break;
+    case 'toggle:shuffle': setShuffle(!state.shuffle); break;
+    case 'toggle:repeat': transportActions.cycleRepeat(); break;
+    case 'toggle:queue': transportActions.toggleQueue(); break;
+    case 'toggle:normalize':
+      state.normalize = !state.normalize;
+      player.applyVolume();
+      persist({ normalize: state.normalize });
+      toast(state.normalize ? 'Volumen constante activado' : 'Volumen constante desactivado');
+      break;
+    case 'focus:search': $('#q').focus(); break;
+    case 'view:library': actions.navigate({ type: 'library' }); break;
+    case 'view:albums': actions.navigate({ type: 'albums' }); break;
+    case 'view:artists': actions.navigate({ type: 'artists' }); break;
+    case 'view:favorites': actions.navigate({ type: 'favorites' }); break;
+    case 'view:recent': actions.navigate({ type: 'recent' }); break;
+    case 'help:shortcuts': helpPopover($('#btn-help'), appInfo, popover); break;
+    case 'help:about': helpPopover($('#btn-help'), appInfo, popover); break;
+    case 'playlist:export':
+      if (state.view.type === 'playlist') actions.tool('pl-export');
+      else toast('Abre primero una lista para exportarla.');
+      break;
+    case 'play:paths': {
+      // «Abrir con Pletina»: la ruta ya está en la biblioteca cuando llega aquí.
+      refreshLibrary({ keepScroll: false }).then(() => {
+        const wanted = new Set((paths || []).map((p) => p.replace(/\\/g, '/')));
+        const found = state.tracks.filter((track) => wanted.has(track.path.replace(/\\/g, '/')));
+        if (found.length) playIds(found.map((track) => track.id));
+      });
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+/* ------------------------------------------------------------- progreso */
+
+function showProgress(payload) {
+  const chip = $('#chip');
+  const text = $('#chip-text');
+  if (payload.phase === 'fin') {
+    chip.classList.remove('show');
+    state.scan = null;
+    return;
+  }
+  state.scan = payload;
+  chip.classList.add('show');
+  if (payload.phase === 'buscando') text.textContent = `Buscando música… ${payload.found || 0}`;
+  else text.textContent = `Leyendo ${payload.done}/${payload.total}`;
+}
+
+/* --------------------------------------------------------- arrastrar aquí */
+
+function bindDrop() {
+  const dropEl = $('#drop');
+  let depth = 0;
+  const hasFiles = (dt) => Array.from(dt?.types || []).includes('Files');
+
+  window.addEventListener('dragenter', (event) => {
+    if (!hasFiles(event.dataTransfer)) return;
+    depth += 1;
+    dropEl.classList.add('show');
+  });
+  window.addEventListener('dragover', (event) => {
+    if (!hasFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+  });
+  window.addEventListener('dragleave', (event) => {
+    if (!hasFiles(event.dataTransfer)) return;
+    depth = Math.max(0, depth - 1);
+    if (!depth) dropEl.classList.remove('show');
+  });
+  window.addEventListener('drop', async (event) => {
+    if (!hasFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    depth = 0;
+    dropEl.classList.remove('show');
+    const paths = api.pathsFromDrop(event.dataTransfer.files);
+    if (!paths.length) return;
+    const summary = await api.library.addPaths(paths);
+    if (!summary.added) toast('No he encontrado música nueva ahí.');
+  });
+}
+
+/* --------------------------------------------------------------- arranque */
+
+async function boot() {
+  document.documentElement.dataset.platform = api.platform;
+
+  const [settings, info] = await Promise.all([api.settings.get(), api.app.info()]);
+  appInfo = info;
+  document.documentElement.dataset.theme = info.dark ? 'dark' : 'light';
+
+  Object.assign(state, {
+    volume: settings.volume ?? 0.9,
+    muted: Boolean(settings.muted),
+    shuffle: Boolean(settings.shuffle),
+    repeat: settings.repeat ?? 'off',
+    normalize: Boolean(settings.normalize),
+    queueOpen: Boolean(settings.queueOpen),
+    sort: settings.sort ?? { key: 'added', dir: 'desc' },
+    view: settings.view ?? { type: 'library', id: null },
+  });
+
+  bindRail(railActions);
+  bindStage(actions);
+  bindQueue(queueActions);
+  bindTransport(transportActions);
+  bindDrop();
+
+  player.onPlayer({
+    onEnded: () => next(true),
+    onError: () => setTimeout(() => next(true), 900),
+    onTrack: () => renderNowPlaying(),
+    onPlayState: () => {
+      renderPlayState();
+      refreshRows();
+    },
+    onTick: (current, total) => {
+      tick(current, total);
+      // Una escucha cuenta a los quince segundos, no por abrir el archivo.
+      if (current > 15 && countedFor !== state.currentId) {
+        countedFor = state.currentId;
+        const track = getTrack(state.currentId);
+        if (track) {
+          track.playCount = (track.playCount || 0) + 1;
+          track.lastPlayedAt = Date.now();
+          api.track.played(state.currentId);
+        }
+      }
+    },
+    onPositionSave: (trackId, position) => {
+      if (trackId) persist({ last: { trackId, position } });
+    },
+  });
+  player.bindMediaSession({ next: () => next(false), prev });
+  player.applyVolume();
+
+  await refreshLibrary({ keepScroll: false });
+  syncToggles(appInfo);
+  renderPlayState();
+  renderNowPlaying();
+
+  // Se recupera lo último que sonaba, en pausa y donde se quedó.
+  const last = settings.last;
+  if (last?.trackId && state.byId.has(last.trackId)) {
+    state.queue = createQueue(visibleTracks().map((track) => track.id), {
+      startId: last.trackId,
+      shuffled: state.shuffle,
+    });
+    loadAndPlay(last.trackId, { play: false, position: last.position || 0 });
+  }
+
+  let searchTimer = 0;
+  $('#q').addEventListener('input', (event) => {
+    clearTimeout(searchTimer);
+    const value = event.target.value;
+    searchTimer = setTimeout(() => {
+      setQuery(value.trim());
+      clearSelection();
+      renderStage();
+    }, 110);
+  });
+  $('#add-btn').addEventListener('click', (event) => {
+    popover(event.currentTarget, [
+      { key: 'folder', label: 'Añadir una carpeta…', run: () => api.library.addFolders() },
+      { key: 'files', label: 'Añadir archivos sueltos…', run: () => api.library.addFiles() },
+      { type: 'sep' },
+      { key: 'm3u', label: 'Importar una lista M3U…', run: () => api.playlists.importFile() },
+      { key: 'rescan', label: 'Analizar la biblioteca de nuevo', run: () => api.library.rescan() },
+    ]);
+  });
+  $('#chip-stop').addEventListener('click', () => api.library.stopScan());
+  $('#btn-menu').addEventListener('click', (event) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    api.app.menu(rect.left, rect.bottom);
+  });
+  document.addEventListener('keydown', onKeyDown);
+  window.addEventListener('beforeunload', () => {
+    if (state.currentId) persist({ last: { trackId: state.currentId, position: player.currentTime() } });
+    persist({ view: state.view });
+  });
+
+  api.on.command(onCommand);
+  api.on.libraryProgress(showProgress);
+  api.on.libraryChanged(async ({ reason, summary }) => {
+    await refreshLibrary();
+    if (summary?.added) toast(`${plural(summary.added, 'canción añadida', 'canciones añadidas')}`);
+    else if (reason === 'add-folder' || reason === 'drop') toast('No he encontrado música nueva ahí.');
+    if (summary?.unavailable?.length) {
+      toast('Hay carpetas que no se pueden leer ahora mismo. ¿Disco desconectado?');
+    }
+  });
+  api.on.libraryWarning(({ message }) => {
+    $('#warn-slot').innerHTML = `<div class="warn">${esc(message)}</div>`;
+  });
+  api.on.themeChanged(({ dark }) => {
+    appInfo.dark = dark;
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    syncToggles(appInfo);
+  });
+
+  state.ready = true;
+}
+
+boot().catch((error) => {
+  document.body.innerHTML = `<div class="empty" style="margin:60px auto"><h3>Pletina no ha podido arrancar</h3>
+    <p>${esc(error.message)}</p></div>`;
+});

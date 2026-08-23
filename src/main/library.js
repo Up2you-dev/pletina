@@ -1,0 +1,418 @@
+import { createHash } from 'node:crypto';
+import { readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { isAudioPath, isIgnoredEntry } from '../shared/audio-files.js';
+import { readTags } from './metadata.js';
+
+export const LIBRARY_DEFAULTS = { version: 1, folders: [], tracks: {}, playlists: [] };
+
+/** El identificador es la ruta: reanalizar la carpeta no rompe las listas. */
+export function trackIdFor(filePath) {
+  return createHash('sha1').update(path.resolve(filePath)).digest('hex').slice(0, 16);
+}
+
+function newId() {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** Recorre una carpeta entera sin recursión ciega: sin enlaces circulares y con tope de profundidad. */
+export async function* walkAudio(root, { maxDepth = 24, shouldStop = () => false } = {}) {
+  const seen = new Set();
+  const stack = [{ dir: root, depth: 0 }];
+  while (stack.length) {
+    if (shouldStop()) return;
+    const { dir, depth } = stack.pop();
+    let real;
+    try {
+      real = await realpath(dir);
+    } catch {
+      continue;
+    }
+    if (seen.has(real)) continue;
+    seen.add(real);
+
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (isIgnoredEntry(entry.name)) continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (depth < maxDepth) stack.push({ dir: full, depth: depth + 1 });
+      } else if (entry.isFile() || entry.isSymbolicLink()) {
+        if (isAudioPath(full)) yield full;
+      }
+    }
+  }
+}
+
+/** Ejecuta `worker` sobre la lista con un tope de tareas a la vez. */
+async function pool(items, limit, worker) {
+  let cursor = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      await worker(items[index], index);
+    }
+  });
+  await Promise.all(runners);
+}
+
+/**
+ * La biblioteca: qué canciones hay, dónde viven y en qué listas están.
+ *
+ * A diferencia de la versión web, aquí los archivos NO se copian a ningún sitio.
+ * La aplicación guarda rutas y etiquetas; la música sigue siendo del disco del
+ * usuario, con su estructura de carpetas intacta.
+ */
+export function createLibrary({ store, covers, onProgress = () => {} }) {
+  let scanning = false;
+  let stopRequested = false;
+
+  const data = () => store.data;
+  const tracks = () => store.data.tracks;
+
+  function listTracks() {
+    return Object.values(tracks());
+  }
+
+  function report(phase, payload) {
+    onProgress({ phase, ...payload });
+  }
+
+  async function buildTrack(filePath, stats, folder, previous) {
+    const { meta, picture, ok } = await readTags(filePath);
+    let coverId = null;
+    if (picture?.data?.length) coverId = await covers.store(Buffer.from(picture.data));
+    if (!coverId) coverId = await covers.fromFolder(path.dirname(filePath));
+    return {
+      ...meta,
+      // Lo que el usuario ha construido con el tiempo sobrevive a un reanálisis.
+      id: trackIdFor(filePath),
+      path: filePath,
+      folder,
+      size: stats.size,
+      mtimeMs: Math.round(stats.mtimeMs),
+      coverId,
+      unreadable: !ok,
+      missing: false,
+      addedAt: previous?.addedAt ?? Date.now(),
+      playCount: previous?.playCount ?? 0,
+      lastPlayedAt: previous?.lastPlayedAt ?? 0,
+      favorite: previous?.favorite ?? false,
+      // Una duración medida por el reproductor es más fiable que la etiqueta.
+      duration: meta.duration || previous?.duration || 0,
+    };
+  }
+
+  /**
+   * Analiza rutas de carpeta. Solo lee etiquetas de lo que ha cambiado de
+   * tamaño o de fecha: la segunda pasada sobre 20.000 canciones es casi instantánea.
+   */
+  async function scan(folderPaths, { full = false } = {}) {
+    if (scanning) return { busy: true };
+    scanning = true;
+    stopRequested = false;
+    const summary = { added: 0, updated: 0, missing: 0, unchanged: 0, unavailable: [], scanned: 0 };
+
+    try {
+      for (const folder of folderPaths) {
+        let rootStat;
+        try {
+          rootStat = await stat(folder);
+        } catch {
+          rootStat = null;
+        }
+        if (!rootStat?.isDirectory()) {
+          // Disco externo desconectado: no se marca nada como ausente.
+          summary.unavailable.push(folder);
+          continue;
+        }
+
+        report('buscando', { folder, found: 0 });
+        const files = [];
+        for await (const file of walkAudio(folder, { shouldStop: () => stopRequested })) {
+          files.push(file);
+          if (files.length % 200 === 0) report('buscando', { folder, found: files.length });
+        }
+        if (stopRequested) break;
+
+        const onDisk = new Set(files.map((f) => trackIdFor(f)));
+        let done = 0;
+        await pool(files, 4, async (file) => {
+          if (stopRequested) return;
+          const id = trackIdFor(file);
+          const previous = tracks()[id];
+          try {
+            const stats = await stat(file);
+            const unchanged = previous &&
+              !full &&
+              previous.size === stats.size &&
+              previous.mtimeMs === Math.round(stats.mtimeMs) &&
+              !previous.missing;
+            if (unchanged) {
+              summary.unchanged += 1;
+            } else {
+              const track = await buildTrack(file, stats, folder, previous);
+              store.update((d) => {
+                d.tracks[id] = track;
+              });
+              if (previous) summary.updated += 1;
+              else summary.added += 1;
+            }
+          } catch {
+            /* el archivo se ha movido mientras se analizaba */
+          }
+          done += 1;
+          summary.scanned += 1;
+          if (done % 10 === 0 || done === files.length) {
+            report('leyendo', { folder, done, total: files.length });
+          }
+        });
+
+        // Lo que ya no está en la carpeta se marca, no se borra: puede volver.
+        store.update((d) => {
+          for (const track of Object.values(d.tracks)) {
+            if (track.folder !== folder) continue;
+            const gone = !onDisk.has(track.id);
+            if (gone && !track.missing) summary.missing += 1;
+            if (gone !== Boolean(track.missing)) track.missing = gone;
+          }
+        });
+      }
+    } finally {
+      scanning = false;
+      covers.resetFolderCache();
+      report('fin', summary);
+    }
+    return summary;
+  }
+
+  async function addFolders(folderPaths) {
+    const now = Date.now();
+    store.update((d) => {
+      for (const folder of folderPaths) {
+        if (!d.folders.some((f) => f.path === folder)) d.folders.push({ path: folder, addedAt: now });
+      }
+    });
+    return scan(folderPaths);
+  }
+
+  /** Archivos sueltos: entran sin carpeta asociada, así ningún reanálisis los borra. */
+  async function addFiles(filePaths) {
+    const audio = filePaths.filter((f) => isAudioPath(f));
+    let added = 0;
+    let done = 0;
+    await pool(audio, 4, async (file) => {
+      try {
+        const stats = await stat(file);
+        if (!stats.isFile()) return;
+        const id = trackIdFor(file);
+        const previous = tracks()[id];
+        const track = await buildTrack(file, stats, previous?.folder ?? null, previous);
+        store.update((d) => {
+          d.tracks[id] = track;
+        });
+        if (!previous) added += 1;
+      } catch {
+        /* ignorado */
+      }
+      done += 1;
+      report('leyendo', { done, total: audio.length });
+    });
+    report('fin', { added, scanned: audio.length });
+    return { added, scanned: audio.length };
+  }
+
+  function removeFolder(folderPath, { keepTracks = false } = {}) {
+    store.update((d) => {
+      d.folders = d.folders.filter((f) => f.path !== folderPath);
+      if (keepTracks) return;
+      const gone = [];
+      for (const track of Object.values(d.tracks)) {
+        if (track.folder === folderPath) gone.push(track.id);
+      }
+      for (const id of gone) delete d.tracks[id];
+      for (const playlist of d.playlists) {
+        playlist.trackIds = playlist.trackIds.filter((id) => !gone.includes(id));
+      }
+    });
+  }
+
+  function removeTracks(ids) {
+    const gone = new Set(ids);
+    store.update((d) => {
+      for (const id of gone) delete d.tracks[id];
+      for (const playlist of d.playlists) {
+        playlist.trackIds = playlist.trackIds.filter((id) => !gone.has(id));
+      }
+    });
+  }
+
+  function removeMissing() {
+    const ids = listTracks().filter((t) => t.missing).map((t) => t.id);
+    removeTracks(ids);
+    return ids;
+  }
+
+  function patchTrack(id, patch) {
+    return store.update((d) => {
+      const track = d.tracks[id];
+      if (!track) return null;
+      Object.assign(track, patch);
+      return track;
+    });
+  }
+
+  function registerPlay(id) {
+    return patchTrack(id, {
+      playCount: (tracks()[id]?.playCount ?? 0) + 1,
+      lastPlayedAt: Date.now(),
+    });
+  }
+
+  /* ---------- listas ---------- */
+
+  function playlistById(id) {
+    return data().playlists.find((p) => p.id === id) ?? null;
+  }
+
+  function createPlaylist(name, trackIds = []) {
+    const playlist = {
+      id: newId(),
+      name: String(name).slice(0, 120),
+      trackIds: [...new Set(trackIds)],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    store.update((d) => {
+      d.playlists.push(playlist);
+    });
+    return playlist;
+  }
+
+  function updatePlaylist(id, patch) {
+    return store.update((d) => {
+      const playlist = d.playlists.find((p) => p.id === id);
+      if (!playlist) return null;
+      Object.assign(playlist, patch, { updatedAt: Date.now() });
+      return playlist;
+    });
+  }
+
+  function addToPlaylist(id, trackIds) {
+    return store.update((d) => {
+      const playlist = d.playlists.find((p) => p.id === id);
+      if (!playlist) return null;
+      const known = new Set(playlist.trackIds);
+      const fresh = trackIds.filter((tid) => !known.has(tid) && d.tracks[tid]);
+      playlist.trackIds.push(...fresh);
+      playlist.updatedAt = Date.now();
+      return { playlist, added: fresh.length, skipped: trackIds.length - fresh.length };
+    });
+  }
+
+  function deletePlaylist(id) {
+    store.update((d) => {
+      d.playlists = d.playlists.filter((p) => p.id !== id);
+    });
+  }
+
+  function reorderPlaylists(orderedIds) {
+    store.update((d) => {
+      const byId = new Map(d.playlists.map((p) => [p.id, p]));
+      const next = orderedIds.map((id) => byId.get(id)).filter(Boolean);
+      for (const playlist of d.playlists) if (!orderedIds.includes(playlist.id)) next.push(playlist);
+      d.playlists = next;
+    });
+  }
+
+  /* ---------- M3U ---------- */
+
+  /** Exporta con rutas relativas al destino: la lista sigue valiendo si se mueve la carpeta. */
+  function toM3U(playlistId, targetPath) {
+    const playlist = playlistById(playlistId);
+    if (!playlist) return null;
+    const dir = path.dirname(targetPath);
+    const lines = ['#EXTM3U'];
+    for (const id of playlist.trackIds) {
+      const track = tracks()[id];
+      if (!track) continue;
+      lines.push(`#EXTINF:${Math.round(track.duration || 0)},${track.artist} - ${track.title}`);
+      lines.push(path.relative(dir, track.path).split(path.sep).join('/'));
+    }
+    return `${lines.join('\n')}\n`;
+  }
+
+  async function exportPlaylist(playlistId, targetPath) {
+    const content = toM3U(playlistId, targetPath);
+    if (content == null) return { ok: false };
+    await writeFile(targetPath, content, 'utf8');
+    return { ok: true, path: targetPath };
+  }
+
+  /** Importa un `.m3u`/`.m3u8` y da de alta las canciones que aún no estuvieran. */
+  async function importPlaylist(filePath) {
+    const raw = await readFile(filePath, 'utf8');
+    const dir = path.dirname(filePath);
+    const entries = raw
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#'))
+      .filter((line) => !/^[a-z][a-z0-9+.-]*:\/\//i.test(line))
+      .map((line) => path.resolve(dir, line.split('/').join(path.sep)))
+      .filter((candidate) => isAudioPath(candidate));
+
+    const existing = [];
+    const unknown = [];
+    for (const candidate of entries) {
+      const id = trackIdFor(candidate);
+      if (tracks()[id]) existing.push(id);
+      else unknown.push(candidate);
+    }
+    if (unknown.length) await addFiles(unknown);
+
+    const ids = entries.map((candidate) => trackIdFor(candidate)).filter((id) => tracks()[id]);
+    const name = path.basename(filePath).replace(/\.[^.]+$/, '') || 'Lista importada';
+    const playlist = createPlaylist(name, ids);
+    return { playlist, imported: ids.length, missing: entries.length - ids.length, discovered: unknown.length, existing: existing.length };
+  }
+
+  return {
+    listTracks,
+    getTrack: (id) => tracks()[id] ?? null,
+    snapshot: () => ({
+      folders: data().folders,
+      tracks: listTracks(),
+      playlists: data().playlists,
+    }),
+    scan,
+    rescan: (options) => scan(data().folders.map((f) => f.path), options),
+    stopScan: () => {
+      stopRequested = true;
+    },
+    get isScanning() {
+      return scanning;
+    },
+    addFolders,
+    addFiles,
+    removeFolder,
+    removeTracks,
+    removeMissing,
+    patchTrack,
+    registerPlay,
+    playlistById,
+    createPlaylist,
+    updatePlaylist,
+    addToPlaylist,
+    deletePlaylist,
+    reorderPlaylists,
+    toM3U,
+    exportPlaylist,
+    importPlaylist,
+  };
+}

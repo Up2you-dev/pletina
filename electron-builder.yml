@@ -1,0 +1,66 @@
+appId: es.up2you.pletina
+productName: Pletina
+copyright: © 2026 Up2you
+
+directories:
+  output: release
+  buildResources: build
+
+# La aplicación es su código y sus dependencias; nada de material de desarrollo.
+files:
+  - src/**/*
+  - package.json
+  - '!**/*.map'
+asarUnpack:
+  - '**/*.node'
+
+# «Abrir con Pletina» desde el explorador de archivos.
+fileAssociations:
+  - ext: [mp3, m4a, flac, ogg, oga, opus, wav, aac, aiff, wma]
+    name: Archivo de audio
+    role: Viewer
+
+mac:
+  category: public.app-category.music
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  icon: build/icon.icns
+  darkModeSupport: true
+  # Sin firma no hay notarización; se documenta en el README en vez de fingirla.
+  identity: null
+  extendInfo:
+    NSMicrophoneUsageDescription: false
+    LSMinimumSystemVersion: '11.0'
+
+win:
+  target:
+    - target: nsis        # instalador de toda la vida
+      arch: [x64, arm64]
+    - target: portable    # un solo .exe que no instala nada
+      arch: [x64]
+    - target: zip         # carpeta descomprimible; es el único que no exige Windows ni wine
+      arch: [x64]
+  icon: build/icon.ico
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: Pletina
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+  category: AudioVideo;Audio;Player
+  # Sin esto, el escritorio no asocia la ventana abierta con su lanzador.
+  syncDesktopName: true
+  icon: build/icons
+  synopsis: Reproductor de música local
+  description: Tu biblioteca de música vive en tu disco. Pletina la lee, la ordena y la reproduce sin nube ni cuentas.
+
+publish: null

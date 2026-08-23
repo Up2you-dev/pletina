@@ -1,0 +1,49 @@
+{
+  "name": "pletina",
+  "productName": "Pletina",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Reproductor de música local de escritorio: tu biblioteca en tu disco, sin nube y sin cuentas",
+  "author": {
+    "name": "Up2you",
+    "email": "info@up2you.es"
+  },
+  "license": "UNLICENSED",
+  "homepage": "https://github.com/Up2you-dev/pletina",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Up2you-dev/pletina.git"
+  },
+  "desktopName": "pletina.desktop",
+  "type": "module",
+  "main": "src/main/main.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "icons": "node build/make-icons.mjs",
+    "verify": "npm run lint && npm test && npm run smoke",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "music-metadata": "^11.15.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.30.0",
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3",
+    "eslint": "^9.30.0",
+    "globals": "^16.0.0",
+    "vitest": "^4.1.11"
+  }
+}
