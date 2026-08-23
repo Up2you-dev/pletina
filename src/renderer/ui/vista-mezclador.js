@@ -130,9 +130,11 @@ export function pintarMezclador() {
     </div>
     ${disponible.puede ? '' : `<p class="hint">${esc(disponible.motivo)}</p>`}
 
-    <p class="nota-mezcla">La transición empieza en el siguiente inicio de compás de la que está sonando,
-    no al pulsar el botón: es lo que hace que los dos bombos caigan juntos. Mientras dura suenan las dos
-    canciones a la vez, con la que entra sin graves hasta el cambio.</p>
+    <p class="nota-mezcla">La transición empieza al empezar la siguiente frase de la que está sonando
+    —o el siguiente compás, si la frase no está clara—, no al pulsar el botón: es lo que hace que los dos
+    bombos caigan juntos. La que entra arranca por donde empieza a sonar de verdad, no por el segundo cero
+    del archivo. Mientras dura suenan las dos canciones a la vez, con la que entra sin graves hasta el
+    cambio.</p>
   </div>`;
 }
 
