@@ -68,7 +68,7 @@ export function renderNowPlaying() {
   if (track) {
     $('#now-title').textContent = track.title;
     $('#now-artist').textContent = track.artist + (track.album ? ` · ${track.album}` : '');
-    $('#quality').textContent = formatQuality(track);
+    $('#quality').textContent = formatQuality(track, actions.tempo?.());
     if (track.coverId) {
       const img = document.createElement('img');
       img.src = window.pletina.media.cover(track.coverId);

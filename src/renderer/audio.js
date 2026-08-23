@@ -69,18 +69,53 @@ export function createEngine() {
   const fuentes = new WeakMap();
 
   /**
-   * Engancha un `<audio>` al grafo. Un elemento solo admite una fuente en toda
-   * su vida, así que se memoriza: pedirla dos veces lanzaría una excepción.
+   * Engancha un `<audio>` al grafo con su propio ecualizador de tres bandas.
+   *
+   * Cada plato necesita el suyo: el cambio de graves de una mezcla consiste en
+   * quitárselos a una canción y devolvérselos a la otra, y con un ecualizador
+   * compartido eso es imposible. Un elemento solo admite una fuente en toda su
+   * vida, así que se memoriza: pedirla dos veces lanzaría una excepción.
    */
   function conectar(elemento) {
     if (fuentes.has(elemento)) return fuentes.get(elemento);
     const fuente = contexto.createMediaElementSource(elemento);
+
+    const grave = contexto.createBiquadFilter();
+    grave.type = 'lowshelf';
+    grave.frequency.value = 220;
+
+    const medio = contexto.createBiquadFilter();
+    medio.type = 'peaking';
+    medio.frequency.value = 1000;
+    medio.Q.value = 0.9;
+
+    const agudo = contexto.createBiquadFilter();
+    agudo.type = 'highshelf';
+    agudo.frequency.value = 4000;
+
     const ganancia = contexto.createGain();
-    fuente.connect(ganancia);
+
+    fuente.connect(grave);
+    grave.connect(medio);
+    medio.connect(agudo);
+    agudo.connect(ganancia);
     ganancia.connect(entradaEq);
-    const plato = { fuente, ganancia };
+
+    const plato = { fuente, ganancia, grave, medio, agudo };
     fuentes.set(elemento, plato);
     return plato;
+  }
+
+  /** Deja un plato como si nadie lo hubiera tocado. */
+  function limpiarPlato(plato, cuando = contexto.currentTime) {
+    if (!plato) return;
+    for (const nombre of ['grave', 'medio', 'agudo']) {
+      const filtro = plato[nombre];
+      filtro.gain.cancelScheduledValues(cuando);
+      filtro.gain.setValueAtTime(0, cuando);
+    }
+    plato.ganancia.gain.cancelScheduledValues(cuando);
+    plato.ganancia.gain.setValueAtTime(1, cuando);
   }
 
   /** El contexto nace suspendido: se despierta con la primera reproducción. */
@@ -98,6 +133,7 @@ export function createEngine() {
     contexto,
     analizador,
     conectar,
+    limpiarPlato,
     despertar,
     get tiempo() {
       return contexto.currentTime;

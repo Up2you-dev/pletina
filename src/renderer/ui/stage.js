@@ -2,6 +2,7 @@ import { $, $$, coverHtml, esc, gradientFor, popover } from './dom.js';
 import { ICO } from './icons.js';
 import { formatTime, formatTotal, formatWhen, plural } from '../../shared/format.js';
 import { ORDEN_ALBUMES, ORDEN_ARTISTAS, SORT_KEYS } from '../../shared/sorting.js';
+import { pintarMezclador } from './vista-mezclador.js';
 import {
   actionTargets,
   albumByKey,
@@ -192,6 +193,10 @@ function toolbarHtml(tracks) {
 
 function headHtml(tracks) {
   const { view } = state;
+  if (view.type === 'mezclador') {
+    return `<div class="stage-title"><h2>Mezclador</h2>
+      <span class="stage-meta">encadena dos canciones como lo haría un pinchadiscos</span></div>`;
+  }
   const total = tracks.reduce((sum, t) => sum + (t.duration || 0), 0);
   const back = ['album', 'artist'].includes(view.type)
     ? `<button class="back" data-tool="back">${ICO.back}${view.type === 'album' ? 'Álbumes' : 'Artistas'}</button>`
@@ -261,6 +266,11 @@ export function renderStage() {
 
   const body = $('#stage-body');
   observer?.disconnect();
+
+  if (view.type === 'mezclador') {
+    body.innerHTML = pintarMezclador();
+    return;
+  }
 
   if (view.type === 'albums' || view.type === 'artists') {
     // Con búsqueda activa se cruza contra un conjunto: `includes` sobre miles de
@@ -446,6 +456,9 @@ export function bindStage(handlers) {
   });
 
   body.addEventListener('click', (event) => {
+    const mezcla = event.target.closest('[data-mezcla]');
+    if (mezcla) return actions.mezclador(mezcla.dataset.mezcla, mezcla.dataset.valor ?? mezcla.dataset.id);
+
     const sortButton = event.target.closest('[data-sort]');
     if (sortButton) return actions.sortBy(sortButton.dataset.sort, true);
 
@@ -472,6 +485,13 @@ export function bindStage(handlers) {
     else selectOnly(id);
     actions.selectionChanged();
     return undefined;
+  });
+
+  body.addEventListener('change', (event) => {
+    const mezcla = event.target.closest('[data-mezcla]');
+    if (mezcla && event.target.type === 'checkbox') {
+      actions.mezclador(mezcla.dataset.mezcla, event.target.checked);
+    }
   });
 
   body.addEventListener('dblclick', (event) => {

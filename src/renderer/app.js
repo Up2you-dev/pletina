@@ -34,6 +34,13 @@ import { abrirSonido, bindSonido, cerrarSonido } from './ui/sonido.js';
 import { alternarVisualizador, montarVisualizador } from './ui/visualizador.js';
 import { analizarPista } from './analisis.js';
 import {
+  alCambiarMezclador,
+  cambiarAjustes,
+  margenAutomatico,
+  mezclarAhora,
+} from './mezclador.js';
+import { refrescarProgreso } from './ui/vista-mezclador.js';
+import {
   bindTransport,
   helpPopover,
   renderNowPlaying,
@@ -133,16 +140,29 @@ function prev() {
   return undefined;
 }
 
-/** Arranca la siguiente antes de que acabe esta y cruza las dos. */
+/**
+ * Se acerca el final de la canción. Con el mezclador automático encendido manda
+ * él —tempo, compás y cambio de graves—; si no, queda el fundido de siempre.
+ */
 function encadenarSiguiente() {
-  if (!state.crossfade || !player.hayMotor()) return;
+  if (!player.hayMotor()) return;
+
+  if (state.mezclador.auto) {
+    const resultado = mezclarAhora();
+    if (resultado.ok) {
+      countedFor = null;
+      refreshRows();
+      renderQueue();
+      if (state.view.type === 'mezclador') renderStage();
+      return;
+    }
+    // Si el mezclador no puede, se sigue con el fundido normal en vez de callar.
+  }
+
+  if (!state.crossfade) return;
   const resultado = advance(state.queue, { repeat: state.repeat, auto: true });
   if (!resultado.id || resultado.restart || resultado.ended) return;
-  const ok = player.encadenar(resultado.id, {
-    segundos: state.crossfade,
-    automezcla: state.automix,
-  });
-  if (!ok) return;
+  if (!player.encadenar(resultado.id, { segundos: state.crossfade })) return;
   state.queue = resultado.queue;
   countedFor = null;
   refreshRows();
@@ -568,6 +588,42 @@ const actions = {
     toast('Lista reordenada. Puedes seguir ajustándola arrastrando.');
   },
 
+  /** Todo lo que se pulsa en la pantalla del mezclador pasa por aquí. */
+  mezclador(que, valor) {
+    switch (que) {
+      case 'ahora': {
+        const resultado = mezclarAhora();
+        if (!resultado.ok) {
+          toast(resultado.motivo);
+          return;
+        }
+        toast(`Mezclando · ${resultado.resumen}`);
+        refreshRows();
+        renderQueue();
+        break;
+      }
+      case 'analizar':
+        actions.analizar([valor]).then(() => renderStage());
+        return;
+      case 'compases':
+        cambiarAjustes({ compases: Number(valor) });
+        break;
+      case 'estilo':
+        cambiarAjustes({ estilo: String(valor) });
+        break;
+      case 'ajustarTempo':
+      case 'estirarTiempo':
+      case 'auto':
+        cambiarAjustes({ [que]: Boolean(valor) });
+        if (que === 'auto') renderRail();
+        break;
+      default:
+        return;
+    }
+    persist({ mezclador: state.mezclador });
+    renderStage();
+  },
+
   selectionChanged() {
     refreshRows();
     renderStageHead();
@@ -822,8 +878,21 @@ const sonidoActions = {
     persist({ crossfade: segundos });
   },
   cambiarAutomezcla(activada) {
-    state.automix = activada;
-    persist({ automix: activada });
+    // Un solo interruptor: el del mezclador. Antes había dos y nadie sabía cuál
+    // mandaba.
+    cambiarAjustes({ auto: activada });
+    persist({ mezclador: state.mezclador });
+    renderRail();
+    if (state.view.type === 'mezclador') renderStage();
+  },
+  cambiarTempo(cambio) {
+    const actual = player.tempoActual();
+    const nuevo = player.ajustarVelocidad(
+      cambio.velocidad ?? actual.velocidad,
+      cambio.preservarTono ?? actual.preservarTono,
+    );
+    renderNowPlaying();
+    return nuevo;
   },
   cambiarNormalizar(activada) {
     state.normalize = activada;
@@ -833,6 +902,7 @@ const sonidoActions = {
 };
 
 const transportActions = {
+  tempo: () => player.tempoActual(),
   toggle: togglePlay,
   next: () => next(false),
   prev,
@@ -1004,6 +1074,12 @@ function onCommand(payload) {
       else if (!player.hayMotor()) toast('Este equipo no permite el visualizador.');
       break;
     }
+    case 'view:mezclador':
+      actions.navigate({ type: 'mezclador' });
+      break;
+    case 'mezclar:ahora':
+      actions.mezclador('ahora');
+      break;
     case 'abrir:sonido':
       abrirSonido($('#btn-sonido'));
       break;
@@ -1136,8 +1212,8 @@ async function boot() {
     sort: settings.sort ?? { key: 'added', dir: 'desc' },
     eq: settings.eq ?? { activado: false, preset: 'plano', bandas: new Array(10).fill(0), preamp: 0 },
     crossfade: Number(settings.crossfade) || 0,
-    automix: Boolean(settings.automix),
     view: settings.view ?? { type: 'library', id: null },
+    mezclador: { ...state.mezclador, ...(settings.mezclador ?? {}) },
     ordenAlbumes: settings.ordenAlbumes ?? { key: 'artista', dir: 'asc' },
     ordenArtistas: settings.ordenArtistas ?? { key: 'nombre', dir: 'asc' },
     ignorarArticulos: settings.ignorarArticulos !== false,
@@ -1177,7 +1253,13 @@ async function boot() {
     },
     // El fundido se desactiva con el temporizador «al terminar esta canción»:
     // encadenar sería justo lo contrario de lo que se ha pedido.
-    margenDeFundido: () => (dormir.alTerminar ? 0 : state.crossfade),
+    margenDeFundido: () => {
+      if (dormir.alTerminar) return 0;
+      // El mezclador necesita más margen que un fundido: una transición de
+      // ocho compases a 120 son dieciséis segundos.
+      const automatico = margenAutomatico();
+      return automatico || state.crossfade;
+    },
     onCercaDelFinal: encadenarSiguiente,
   });
   player.bindMediaSession({ next: () => next(false), prev });
@@ -1230,6 +1312,13 @@ async function boot() {
     if (state.currentId) persist({ last: { trackId: state.currentId, position: player.currentTime() } });
     persist({ view: state.view });
   });
+
+  alCambiarMezclador(() => {
+    if (state.view.type === 'mezclador') renderStage();
+  });
+  setInterval(() => {
+    if (state.view.type === 'mezclador') refrescarProgreso();
+  }, 250);
 
   api.on.command(onCommand);
   api.on.libraryProgress(showProgress);

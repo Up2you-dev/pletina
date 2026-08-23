@@ -41,9 +41,9 @@ export const state = {
   normalize: false,
   eq: { activado: false, preset: 'plano', bandas: new Array(10).fill(0), preamp: 0 },
   crossfade: 0,
-  automix: false,
   visualizador: false,
   escribirEtiquetas: false,
+  mezclador: { auto: false, compases: 8, estilo: 'bombo', ajustarTempo: true, estirarTiempo: true },
 
   queueOpen: false,
   selection: new Set(),
@@ -156,6 +156,8 @@ export function viewTitle() {
       return albumByKey(view.key)?.album ?? 'Álbum';
     case 'artist':
       return artistByKey(view.key)?.artist ?? 'Artista';
+    case 'mezclador':
+      return 'Mezclador';
     case 'albums':
       return 'Álbumes';
     case 'artists':

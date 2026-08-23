@@ -54,6 +54,15 @@ describe('formatQuality', () => {
     // Sin analizar, ni se mencionan.
     expect(formatQuality({ codec: 'flac', bpm: 0, key: '' })).toBe('FLAC');
   });
+
+  it('con el tempo ajustado enseña el bpm que suena y cuánto se ha estirado', () => {
+    expect(formatQuality({ codec: 'flac', bpm: 128, key: 'Am' }, { velocidad: 1.016 }))
+      .toBe('FLAC · 130 bpm · Am · +1.6 %');
+    expect(formatQuality({ codec: 'flac', bpm: 128 }, { velocidad: 0.95 }))
+      .toBe('FLAC · 122 bpm · -5 %');
+    // A velocidad normal no aparece ningún porcentaje.
+    expect(formatQuality({ codec: 'flac', bpm: 128 }, { velocidad: 1 })).toBe('FLAC · 128 bpm');
+  });
 });
 
 describe('formatWhen', () => {

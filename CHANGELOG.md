@@ -4,6 +4,76 @@ Las versiones siguen [SemVer](https://semver.org/lang/es/). Cada una se
 construye desde la pestaña *Actions* del repositorio; una etiqueta `v1.2.3`
 además publica los instaladores sueltos en la página de versiones.
 
+## 3.0.0 — 2026-08-23
+
+La versión del **mezclador**: deja de ser una casilla escondida en un panel y
+pasa a ser una parte de la aplicación con pantalla, criterio y nombre propios.
+
+### El mezclador, con entidad propia
+
+- **Pantalla propia**, en la barra lateral. Enseña las dos canciones como dos
+  platos con su tempo, su tonalidad y su rejilla, y dice en una línea qué va a
+  hacer —«8 compases · Cambio de graves · ajuste de tempo +1,6 %»— antes de
+  hacerlo. Nada de números mágicos.
+- **Espera al compás.** La transición ya no empieza al pulsar el botón, sino en
+  el siguiente inicio de compás de la que está sonando; y la que entra arranca
+  en *su* inicio de compás. Es la diferencia entre dos canciones sonando a la
+  vez y una mezcla: en las pruebas los compases de las dos se mantienen a menos
+  de un 2 % de distancia durante quince segundos.
+- **Detecta por dónde entra el bombo.** El análisis busca los golpes en la banda
+  grave (25–150 Hz), coloca la rejilla de compases y decide cuál es el tiempo
+  fuerte. Cuando el bombo no se distingue, lo dice y usa el pulso general.
+- **Cambio de graves, como en una cabina.** La que entra lo hace con los graves
+  fuera (−26 dB), sube de volumen durante la primera mitad y, en un tiempo seco
+  a mitad de transición, se intercambian los graves de las dos. La que sale se
+  va por arriba en la segunda mitad. También hay *Fundido largo* y *Corte en el
+  compás*, de cuatro a treinta y dos compases.
+- **Se ve lo que está pasando.** Durante la transición, la pantalla enseña el
+  volumen y los graves reales de cada plato leídos del grafo de audio, con la
+  marca de dónde cae el cambio. No es una animación decorativa.
+- **Avisa en vez de disimular.** Si falta el análisis de una canción, si los
+  tempos están a más de un 12 % o si las tonalidades chocan, lo dice antes de
+  sonar y ofrece analizar ahí mismo.
+- **Un solo interruptor de mezcla automática.** Antes había dos —uno en el panel
+  de sonido que no hacía nada— y ninguno de los dos mandaba del todo.
+
+### Estirado de tiempo
+
+- **Mando de tempo en el panel de sonido**, de −20 % a +20 %, con la casilla
+  *Mantener el tono*: con ella, la canción cambia de velocidad sin cambiar de
+  tonalidad (estirado de tiempo real del motor, medido: un tono de 323 Hz sigue
+  en 323 Hz a ×1,2); sin ella, sube el tono como un vinilo acelerado.
+- **El bpm que se enseña es el que suena.** Con el tempo ajustado, la línea de
+  información de abajo pasa a decir el tempo real y cuánto se ha estirado
+  («130 bpm · +1,6 %»), en vez del número del archivo.
+- El mezclador usa el mismo mando: cuando una mezcla ajusta el tempo, ese pasa a
+  ser el tempo del reproductor, y encadenar una tercera canción parte de ahí en
+  vez de volver al del archivo.
+
+### Corregido
+
+- **El ajuste de tempo no llegaba al plato.** El plan decía «+1,6 %» y la
+  canción entraba a su velocidad, desincronizada: asignar `src` reinicia el
+  elemento y con él `playbackRate`, y la velocidad se ponía antes. Ahora se pone
+  después y se repite al cargar los metadatos.
+- **Los dos platos se quedaban vacíos** en la pantalla del mezclador justo
+  cuando empezaba a sonar la mezcla, porque la cola ya había avanzado.
+
+### Por dentro
+
+- `shared/beats.js` (rejilla de compases y bombo) y `shared/mezcla.js` (el plan
+  de una transición, como lista de eventos con su instante y su rampa) son
+  funciones puras: 36 pruebas nuevas comprueban una mezcla de discoteca sin
+  encender un altavoz.
+- `renderer/mezclador.js` es la unidad: decide, recuerda y avisa a quien mire.
+  El reproductor solo ejecuta el plan sobre el reloj del audio.
+- `npm run test:mezcla`: prueba nueva de extremo a extremo que fabrica dos
+  canciones con bombo a 128 y 126, las analiza con el analizador de verdad y
+  mide la transición sobre el grafo de audio. Falla si se vuelve a colar el
+  error del tempo: es la única manera de verlo.
+- 193 pruebas en total (`npm run verify` encadena lint, pruebas, arranque real,
+  arrastre y mezcla).
+
 ## 2.0.0 — 2026-08-23
 
 La versión en la que Pletina deja de ser solo un reproductor: ahora también

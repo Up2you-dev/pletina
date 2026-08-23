@@ -96,6 +96,7 @@ export function createLibrary({ store, covers, escritor = escritorPorDefecto, on
       bpm: meta.bpm || previous?.bpm || 0,
       key: meta.key || previous?.key || '',
       tonalidad: previous?.tonalidad || '',
+      rejilla: previous?.rejilla ?? null,
       analisis: previous?.analisis ?? null,
       // Lo que el usuario corrigió a mano gana a lo que diga la etiqueta, y
       // sigue ganando después de volver a leer el archivo.
@@ -380,6 +381,17 @@ export function createLibrary({ store, covers, escritor = escritorPorDefecto, on
       track.bpm = Number.isFinite(bpm) && bpm > 0 ? Math.round(bpm * 10) / 10 : 0;
       track.key = typeof datos.key === 'string' ? datos.key.slice(0, 8) : '';
       track.tonalidad = typeof datos.tonalidad === 'string' ? datos.tonalidad.slice(0, 24) : '';
+      // La rejilla es lo que permite pinchar en el compás: sin ella el
+      // mezclador sabe a qué velocidad ir, pero no cuándo entrar.
+      const rejilla = datos.rejilla ?? null;
+      track.rejilla = rejilla && Number(rejilla.bpm) > 0 ? {
+        bpm: Math.round(Number(rejilla.bpm) * 10) / 10,
+        offset: Math.max(0, Number(rejilla.offset) || 0),
+        tiempoFuerte: Math.min(7, Math.max(0, Math.round(Number(rejilla.tiempoFuerte) || 0))),
+        fuerza: Number(rejilla.fuerza) || 0,
+        porBombo: Boolean(rejilla.porBombo),
+        tiemposPorCompas: Math.min(8, Math.max(2, Math.round(Number(rejilla.tiemposPorCompas) || 4))),
+      } : null;
       track.analisis = {
         bpmConfianza: Number(datos.bpmConfianza) || 0,
         keyConfianza: Number(datos.keyConfianza) || 0,

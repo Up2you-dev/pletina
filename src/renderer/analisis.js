@@ -4,6 +4,7 @@ import {
   detectarTonalidad,
   envolventeDeAtaques,
 } from '../shared/musica.js';
+import { rejillaCompleta } from '../shared/beats.js';
 
 /**
  * Analiza una canción para sacarle tempo y tonalidad.
@@ -56,12 +57,27 @@ export async function analizarPista(id, contexto) {
   const { envolvente, tasa: tasaEnvolvente } = envolventeDeAtaques(tramo, tasa);
   const tempo = detectarTempo(envolvente, tasaEnvolvente);
   const tono = detectarTonalidad(chromaDeMuestras(tramo, tasa));
+  const bpm = tempo.confianza >= 0.12 ? tempo.bpm : 0;
+
+  // La rejilla se busca sobre el principio de la canción, no sobre el tramo
+  // central: el desfase que hace falta para mezclar es el del archivo entero.
+  const rejilla = bpm
+    ? rejillaCompleta(muestras.subarray(0, Math.floor(tasa * 60)), tasa, bpm)
+    : { offset: 0, fuerza: 0, tiempoFuerte: 0, porBombo: false };
 
   return {
-    bpm: tempo.confianza >= 0.12 ? tempo.bpm : 0,
+    bpm,
     bpmConfianza: tempo.confianza,
     key: tono.confianza >= 0.55 ? tono.cifrado : '',
     tonalidad: tono.confianza >= 0.55 ? tono.tonalidad : '',
     keyConfianza: tono.confianza,
+    rejilla: {
+      bpm,
+      offset: rejilla.offset,
+      tiempoFuerte: rejilla.tiempoFuerte,
+      fuerza: rejilla.fuerza,
+      porBombo: rejilla.porBombo,
+      tiemposPorCompas: 4,
+    },
   };
 }

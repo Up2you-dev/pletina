@@ -28,10 +28,10 @@ Los artefactos de la ejecución siguen ahí para lo que no se publica:
 
 | Artefacto | Qué trae |
 |---|---|
-| **`pletina-windows-instalador`** | `Pletina Setup 1.0.0.exe`, el instalador de toda la vida (x64 y arm64) |
-| `pletina-windows-sin-instalar` | `Pletina 1.1.0.exe` portable y el `.zip` que se descomprime y se ejecuta |
-| `pletina-macos` | `Pletina-1.1.0-arm64.dmg` — abrir y arrastrar a Aplicaciones |
-| `pletina-linux` | `Pletina-1.1.0.AppImage` (`chmod +x` y doble clic) y el `.deb` |
+| **`pletina-windows-instalador`** | `Pletina Setup X.Y.Z.exe`, el instalador de toda la vida (x64 y arm64) |
+| `pletina-windows-sin-instalar` | `Pletina X.Y.Z.exe` portable y el `.zip` que se descomprime y se ejecuta |
+| `pletina-macos` | `Pletina-X.Y.Z-arm64.dmg` — abrir y arrastrar a Aplicaciones |
+| `pletina-linux` | `Pletina-X.Y.Z.AppImage` (`chmod +x` y doble clic) y el `.deb` |
 
 Al lanzarlo a mano se elige un solo sistema —Windows por defecto— y se enciende
 una sola máquina. Publicar una etiqueta `v1.2.3` construye los tres y además
@@ -58,7 +58,7 @@ npm run dist:win     # y esto te deja el instalador en release\
 Y para lo demás:
 
 ```bash
-npm run verify       # lint + 156 pruebas + arranque real + prueba de arrastre
+npm run verify       # lint + 193 pruebas + arranque real, arrastre y mezcla
 npm run dist:mac     # .dmg (arm64 + x64)  · hay que ejecutarlo EN un Mac
 npm run dist:linux   # AppImage + .deb
 ```
@@ -91,7 +91,8 @@ src/
 ├─ main/        proceso principal: ventana, menú, protocolos, biblioteca, almacén
 ├─ preload/     el único puente, por contextBridge (preload.mjs)
 ├─ renderer/    la interfaz: sin framework, módulos ES servidos por pletina://
-└─ shared/      lógica pura compartida y probada (cola, orden, formato, Range)
+└─ shared/      lógica pura compartida y probada (cola, orden, formato, Range,
+                tempo y tonalidad, rejilla de compases, plan de mezcla)
 ```
 
 **Dos esquemas propios.** `pletina://` sirve la interfaz —al no ser `file://`, la
@@ -125,10 +126,10 @@ copia `.pletina-bak` al lado, se escribe en un temporal y se renombra encima, as
 que un corte a mitad no puede destrozar la canción.
 
 **El sonido pasa por Web Audio.** De ahí salen el ecualizador de diez bandas, el
-visualizador y el fundido entre canciones, que necesita dos platos sonando a la
-vez. El tempo y la tonalidad se calculan aparte, en matemática pura y probada
-con señales fabricadas, y solo cuando se piden: decodificar el audio de una
-biblioteca entera costaría horas para un dato que casi nadie mira.
+visualizador, el estirado de tiempo y el mezclador, que necesita dos platos
+sonando a la vez. El tempo y la tonalidad se calculan aparte, en matemática pura
+y probada con señales fabricadas, y solo cuando se piden: decodificar el audio de
+una biblioteca entera costaría horas para un dato que casi nadie mira.
 
 **Estado regenerable y estado del usuario, separados.** Las etiquetas se pueden
 volver a leer del disco cuando haga falta; los favoritos, las escuchas y las
@@ -138,6 +139,47 @@ haya cambiado.
 **Escritura atómica.** `biblioteca.json` y `ajustes.json` se escriben en un
 temporal y se renombran, con las escrituras agrupadas. Un corte de luz no deja un
 JSON a medias, y un JSON ilegible se aparta como `.corrupto` en vez de perderse.
+
+## El mezclador
+
+Tiene pantalla propia, estado propio y su propio criterio: no es un interruptor
+del reproductor, es una unidad que le toma prestados los dos platos. Encadena
+dos canciones **como lo haría un pinchadiscos**, y enseña exactamente lo que va
+a hacer antes de hacerlo.
+
+Qué hace en una transición:
+
+1. **Espera al compás.** El pinchazo no cae al pulsar el botón, sino en el
+   siguiente inicio de compás de la que está sonando; y la que entra empieza en
+   *su* inicio de compás. Es lo que hace que los dos bombos caigan juntos en vez
+   de pisarse.
+2. **Iguala el tempo** de la que entra al de la que sale, siempre que la
+   distancia sea inferior al 12 % —medio tempo y doble tempo cuentan como el
+   mismo pulso—. Con el estirado de tiempo activado, la canción cambia de
+   velocidad sin cambiar de tonalidad.
+3. **Cambia los graves.** La que entra lo hace con los graves fuera (−26 dB):
+   dos bombos a la vez suenan a barro. Sube de volumen durante la primera mitad
+   y, en un tiempo seco a mitad de transición, se intercambian los graves. La
+   que sale se va por arriba en la segunda mitad.
+4. **Avisa en vez de disimular.** Si a una canción le falta el análisis, si los
+   tempos están demasiado lejos o si las tonalidades chocan, lo dice antes de
+   sonar y ofrece analizar ahí mismo.
+
+Hay tres maneras de entrar: *Cambio de graves* (la de siempre), *Fundido largo*
+(cruce de igual potencia) y *Corte en el compás* (seco, sin cruce), de cuatro a
+treinta y dos compases. Con «mezclar sola» encendido, lo hace con cada canción
+de la cola sin tocar nada.
+
+**Cómo está partido.** El plan de una mezcla es una función pura —qué pasa y
+cuándo, como una lista de eventos con su instante, su parámetro y su rampa— en
+`shared/mezcla.js`; el análisis del bombo y la rejilla de compases, en
+`shared/beats.js`; la unidad que decide y recuerda, en `renderer/mezclador.js`;
+y la traducción a automatización del grafo de audio, en `renderer/player.js`.
+Por eso se puede probar una transición de discoteca sin altavoces: se mira el
+plan y se comprueba que los graves se cambian en el compás correcto. Todo se
+programa de una vez sobre el reloj del audio, nunca con temporizadores de
+JavaScript: un `setTimeout` llega tarde, y en una mezcla eso son dos bombos
+pisándose.
 
 ## Datos
 
@@ -191,7 +233,7 @@ y los empaqueta en `.ico` y `.icns`).
 
 ## Pruebas
 
-- `npm test` — 156 pruebas sobre la lógica pura (cola, orden y búsqueda,
+- `npm test` — 193 pruebas sobre la lógica pura (cola, orden y búsqueda,
   formato, `Range`), sobre el almacén y la biblioteca contra archivos de verdad
   en carpetas temporales —análisis incremental, ausencias, discos desconectados,
   correcciones de etiquetas, listas y M3U de ida y vuelta— y de contrato entre
@@ -203,6 +245,14 @@ y los empaqueta en `.ico` y `.icns`).
   comprueba que acaba en la biblioteca. Existe porque el error que rompía
   arrastrar y soltar vivía en la costura entre el renderizador y el preload,
   donde ninguna de las otras dos podía verlo.
+- `npm run test:mezcla` — fabrica dos canciones con bombo a 128 y 126, las
+  analiza con el analizador de verdad y mide la transición sobre el grafo de
+  audio: que el pinchazo espera al compás, que la que entra va a la velocidad
+  del plan sin cambiar de tono, que entra sin graves y que los compases de las
+  dos se mantienen juntos (menos de un 2 % de compás de desfase durante quince
+  segundos). Existe por el mismo motivo que la anterior: el plan era correcto y
+  el plato no lo aplicaba, porque asignar `src` reinicia `playbackRate`. Ninguna
+  prueba unitaria puede ver eso.
 
 En Linux sin escritorio, las dos últimas usan `xvfb-run` automáticamente.
 
@@ -211,8 +261,11 @@ En Linux sin escritorio, las dos últimas usan `xvfb-run` automáticamente.
 - Sin firma ni notarización (arriba).
 - Escribir etiquetas solo funciona en MP3 y WAV. En FLAC, M4A y compañía la
   corrección se queda en Pletina, y la aplicación lo dice al intentarlo.
-- La mezcla automática ajusta el tempo cambiando la velocidad, así que también
-  cambia ligeramente el tono. No hace *time-stretching*.
+- El mezclador no iguala tempos que estén a más de un 12 % de distancia: por
+  encima, el estirado se nota y prefiere avisar a disimular.
+- El estirado de tiempo es el del motor del sistema (WSOLA). Con ajustes
+  grandes —más de un 15 %— aparecen los artefactos típicos en las voces; para
+  mezclar, donde se mueve un 2 o 3 %, es transparente.
 - El análisis de tempo acierta bien con música de pulso marcado y falla más con
   música libre o en vivo; por eso guarda su nivel de confianza y no se inventa un
   número cuando no lo tiene claro.

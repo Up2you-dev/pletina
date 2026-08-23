@@ -155,6 +155,14 @@ export function renderRail() {
     <div class="rail-label">Colección</div>
     <div class="rail-group">${collection}</div>
 
+    <div class="rail-label">Mezcla</div>
+    <div class="rail-group">${navItem({
+    view: { type: 'mezclador' },
+    icon: ICO.sliders,
+    label: 'Mezclador',
+    extraClass: state.mezclador?.auto ? 'warn' : '',
+  })}</div>
+
     <div class="rail-label">Listas
       <button data-rail-action="newPlaylist" aria-label="Nueva lista">${ICO.plus}</button>
     </div>

@@ -50,6 +50,7 @@ const hooks = {
   onPlayState: () => {},
   onPositionSave: () => {},
   onCercaDelFinal: () => {},
+  onMezcla: () => {},
   /** Segundos de fundido, o 0 para encadenar sin cruce. Lo decide la interfaz. */
   margenDeFundido: () => 0,
 };
@@ -59,6 +60,67 @@ export function onPlayer(handlers) {
 }
 
 export const engine = () => motor;
+export const mezclando = () => encadenando;
+/** El plato que está sonando, para que el mezclador sepa dónde va. */
+export const platoActivo = () => ({
+  id: plato().id,
+  tiempo: plato().el.currentTime || 0,
+  // Si viene de una mezcla anterior puede ir ajustado: su tempo real es el de
+  // la canción por esta velocidad, y el mezclador tiene que contar con ello.
+  velocidad: plato().el.playbackRate || 1,
+});
+
+/**
+ * Qué está haciendo cada plato ahora mismo: volumen, ecualización y velocidad.
+ * El mezclador lo enseña en pantalla durante la transición, que es la única
+ * manera de ver el cambio de graves ocurriendo.
+ */
+export function estadoDePlatos() {
+  return platos.map((p, indice) => ({
+    indice,
+    activo: indice === activo,
+    id: p.id,
+    tiempo: p.el.currentTime || 0,
+    velocidad: p.el.playbackRate,
+    estirando: p.el.preservesPitch !== false,
+    sonando: !p.el.paused,
+    ganancia: p.nodos ? Math.round(p.nodos.ganancia.gain.value * 100) / 100 : null,
+    grave: p.nodos ? Math.round(p.nodos.grave.gain.value * 10) / 10 : null,
+    medio: p.nodos ? Math.round(p.nodos.medio.gain.value * 10) / 10 : null,
+    agudo: p.nodos ? Math.round(p.nodos.agudo.gain.value * 10) / 10 : null,
+  }));
+}
+
+/* ------------------------------------------------------------------- tempo */
+
+/**
+ * Tempo de reproducción. Vive aquí y no en la interfaz porque el mezclador
+ * también lo toca: cuando una mezcla ajusta el tempo de la que entra, ese pasa
+ * a ser el tempo del reproductor y el panel tiene que enseñar la verdad.
+ *
+ * `preservarTono` es lo que separa un ajuste usable de una cinta acelerada:
+ * con él el motor hace estirado de tiempo real (la canción va más rápida y
+ * sigue en la misma tonalidad); sin él sube el tono como un vinilo.
+ */
+let tempo = { velocidad: 1, preservarTono: true };
+
+function aplicarTempo(p) {
+  if (!p?.el) return;
+  p.el.preservesPitch = tempo.preservarTono;
+  p.el.playbackRate = tempo.velocidad;
+}
+
+/** El tempo que suena ahora mismo, para que la interfaz no se lo invente. */
+export const tempoActual = () => ({ ...tempo });
+
+export function ajustarVelocidad(velocidad, preservarTono = tempo.preservarTono) {
+  tempo = {
+    velocidad: Math.max(0.5, Math.min(2, Number(velocidad) || 1)),
+    preservarTono: Boolean(preservarTono),
+  };
+  aplicarTempo(plato());
+  return tempoActual();
+}
 export const hayMotor = () => Boolean(motor);
 
 /* ------------------------------------------------------------------ volumen */
@@ -116,9 +178,11 @@ export function load(id, { play = true, position = 0 } = {}) {
   actual.id = id;
   state.currentId = id;
   avisadoFinal = false;
-  actual.el.playbackRate = 1;
   fijarGanancia(actual, 1);
   actual.el.src = window.pletina.media.track(id);
+  // Después del `src`, nunca antes: asignar la fuente reinicia el elemento y
+  // con él la velocidad. El tempo elegido se vuelve a poner encima.
+  aplicarTempo(actual);
   if (position > 0) {
     const buscar = () => {
       try {
@@ -207,11 +271,124 @@ function cancelarFundido() {
 }
 
 /**
- * Encadena con la siguiente: arranca el otro plato, cruza las ganancias y pasa
- * a ser el principal. Si hay mezcla automática y las dos canciones traen tempo
- * conocido y parecido, la entrante se ajusta al tempo de la saliente.
+ * Ejecuta un plan de mezcla (`shared/mezcla.js`) sobre los dos platos.
+ *
+ * El plan dice qué hacer y cuándo; aquí solo se traduce a automatización del
+ * grafo. Todo se programa de una vez sobre el reloj del audio, no con
+ * temporizadores de JavaScript: un `setTimeout` llega tarde y en una mezcla eso
+ * son dos bombos pisándose.
  */
-export function encadenar(id, { segundos = 6, automezcla = false } = {}) {
+export function mezclar(id, plan, { estirarTiempo = true } = {}) {
+  if (!motor || encadenando) return false;
+  const entrante = otro();
+  const saliente = plato();
+  const track = getTrack(id);
+  if (!track || !entrante.nodos || !saliente.nodos) return false;
+
+  encadenando = true;
+  entrante.id = id;
+  entrante.el.src = window.pletina.media.track(id);
+
+  const velEntrante = plan.velocidad || 1;
+  // Después del `src`, nunca antes: asignar la fuente relanza el algoritmo de
+  // carga del elemento y eso devuelve `playbackRate` a 1. El ajuste de tempo se
+  // perdía entero y la mezcla salía desincronizada aunque el plan fuese correcto.
+  // Se repite con los metadatos por si la carga vuelve a pisarlo.
+  // La mezcla manda sobre el tempo: a partir de aquí el reproductor va al tempo
+  // que ha decidido el plan, y el panel de sonido lo refleja.
+  tempo = { velocidad: velEntrante, preservarTono: Boolean(estirarTiempo) };
+  const preparar = () => aplicarTempo(entrante);
+  preparar();
+  entrante.el.addEventListener('loadedmetadata', preparar, { once: true });
+
+  motor.limpiarPlato(entrante.nodos);
+  fijarGanancia(entrante, 0);
+
+  // El pinchazo cae en un inicio de compás de la que está sonando: eso es lo
+  // que hace que los bombos de las dos canciones caigan juntos. `arranque` va
+  // en tiempo de la canción; para saber cuánto falta de reloj hay que dividir
+  // por la velocidad a la que se está reproduciendo.
+  const velSaliente = saliente.el.playbackRate || 1;
+  const posicion = saliente.el.currentTime || 0;
+  const espera = Math.max(0, ((Number(plan.arranque) || posicion) - posicion) / velSaliente);
+
+  const platos = { entrante, saliente };
+  const t0 = motor.tiempo + Math.max(0.05, espera);
+  for (const evento of plan.eventos) programar(platos, evento, t0);
+
+  // La entrante arranca antes del pinchazo cuando tiene recorrido por delante:
+  // así el elemento ya va sonando (en silencio) y llega al compás sin arrastrar
+  // el retardo de `play()`. Si no lo tiene, se espera y se corrige el desfase.
+  const margen = Math.min(espera, Math.max(0, plan.inicioEntrante / velEntrante));
+  const arrancar = () => {
+    if (!encadenando) return;
+    const retraso = Math.max(0, motor.tiempo - (t0 - margen));
+    try {
+      entrante.el.currentTime = Math.max(0, plan.inicioEntrante - (margen - retraso) * velEntrante);
+    } catch {
+      /* aún sin metadatos: entrará por su principio */
+    }
+    preparar();
+    const promesa = entrante.el.play();
+    if (promesa?.catch) promesa.catch(() => cancelarFundido());
+  };
+  const retardoArranque = Math.max(0, espera - margen);
+  if (retardoArranque > 0.02) setTimeout(arrancar, retardoArranque * 1000);
+  else arrancar();
+
+  activo = 1 - activo;
+  state.currentId = id;
+  avisadoFinal = false;
+  hooks.onTrack(track);
+  setMediaSession(track);
+  hooks.onMezcla?.({ plan, en: 'inicio' });
+
+  const finaliza = (espera + plan.duracion + 0.25) * 1000;
+  setTimeout(() => {
+    if (!encadenando) return;
+    encadenando = false;
+    saliente.el.pause();
+    saliente.el.removeAttribute('src');
+    saliente.id = null;
+    motor.limpiarPlato(saliente.nodos);
+    motor.limpiarPlato(plato().nodos);
+    hooks.onMezcla?.({ plan, en: 'fin' });
+  }, Math.max(400, finaliza));
+  return true;
+}
+
+/** Traduce un evento del plan a automatización sobre el parámetro que toque. */
+function programar({ entrante, saliente }, evento, t0) {
+  const plato = evento.plato === 'entrante' ? entrante : saliente;
+  const nodos = plato?.nodos;
+  if (!nodos) return;
+  const parametro = evento.parametro === 'ganancia'
+    ? nodos.ganancia.gain
+    : nodos[evento.parametro]?.gain;
+  if (!parametro) return;
+
+  const cuando = t0 + evento.en;
+  const rampa = Math.max(0.01, Number(evento.rampa) || 0.01);
+
+  if (evento.curva === 'potencia') {
+    // Igual potencia: un cruce lineal hunde el volumen justo a la mitad.
+    const subiendo = (evento.a ?? 1) > (evento.desde ?? 1);
+    parametro.cancelScheduledValues(cuando);
+    if (evento.desde !== undefined) parametro.setValueAtTime(evento.desde, cuando);
+    parametro.setValueCurveAtTime(curva(!subiendo), cuando, rampa);
+    return;
+  }
+
+  parametro.cancelScheduledValues(cuando);
+  parametro.setValueAtTime(parametro.value, cuando);
+  parametro.linearRampToValueAtTime(evento.a, cuando + rampa);
+}
+
+/**
+ * Encadenado simple: el fundido de toda la vida, sin ajuste de tempo ni cambio
+ * de graves. Lo usa el reproductor cuando el mezclador está apagado.
+ */
+export function encadenar(id, { segundos = 6 } = {}) {
   if (!motor || encadenando) return false;
   const entrante = otro();
   const saliente = plato();
@@ -220,30 +397,17 @@ export function encadenar(id, { segundos = 6, automezcla = false } = {}) {
 
   encadenando = true;
   entrante.id = id;
-  entrante.el.playbackRate = 1;
   entrante.el.src = window.pletina.media.track(id);
-
-  if (automezcla) {
-    const saleBpm = getTrack(saliente.id)?.bpm;
-    const entraBpm = track.bpm;
-    // Solo se toca el tempo si el ajuste es discreto: por encima de un 8 % la
-    // canción entrante empieza a sonar rara.
-    if (saleBpm && entraBpm) {
-      const razon = saleBpm / entraBpm;
-      if (razon > 0.92 && razon < 1.08) entrante.el.playbackRate = razon;
-    }
-  }
-
+  aplicarTempo(entrante);
+  motor.limpiarPlato(entrante.nodos);
   fijarGanancia(entrante, 0);
   const promesa = entrante.el.play();
   if (promesa?.catch) promesa.catch(() => cancelarFundido());
 
   const ahora = motor.tiempo;
-  const fin = ahora + segundos;
   const sale = ganancia(saliente);
   const entra = ganancia(entrante);
   if (sale && entra) {
-    // Curvas de igual potencia: un cruce lineal hunde el volumen a la mitad.
     sale.setValueCurveAtTime(curva(true), ahora, segundos);
     entra.setValueCurveAtTime(curva(false), ahora, segundos);
   }
@@ -261,7 +425,7 @@ export function encadenar(id, { segundos = 6, automezcla = false } = {}) {
     saliente.el.removeAttribute('src');
     saliente.id = null;
     fijarGanancia(plato(), 1);
-  }, Math.max(0, (fin - motor.tiempo) * 1000) + 120);
+  }, segundos * 1000 + 120);
   return true;
 }
 
