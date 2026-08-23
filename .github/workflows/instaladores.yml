@@ -11,6 +11,10 @@ on:
         type: choice
         default: windows
         options: [windows, macos, linux, todos]
+      publicar:
+        description: Publicar también en la página de versiones
+        type: boolean
+        default: true
   push:
     tags: ['v*']
 
@@ -103,12 +107,13 @@ jobs:
             release/*.AppImage
             release/*.deb
 
-  # Una etiqueta `v1.2.3` publica los instaladores como archivos sueltos, que es
-  # como se descargan de uno en uno en vez de dentro de un zip de zips.
+  # Los artefactos de una ejecución son un zip de zips y piden estar
+  # identificado. La página de versiones da el archivo suelto, con enlace
+  # directo y permanente: es de donde se descarga esto de verdad.
   publicar:
     name: Publicar la versión
     needs: construir
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.publicar
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -116,11 +121,26 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: paquetes
+      # Desde una etiqueta, la etiqueta manda; a mano, la versión del package.json.
+      - id: version
+        run: echo "etiqueta=${GITHUB_REF_NAME#refs/tags/}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          path: fuente
       - env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "Pletina $GITHUB_REF_NAME" \
-            --generate-notes \
-            $(find paquetes -type f | sort)
+          etiqueta="${{ steps.version.outputs.etiqueta }}"
+          if [ "$GITHUB_EVENT_NAME" != "push" ]; then
+            etiqueta="v$(node -p "require('./fuente/package.json').version")"
+          fi
+          archivos=$(find paquetes -type f | sort)
+          echo "Publicando $etiqueta con:"; echo "$archivos"
+          if gh release view "$etiqueta" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$etiqueta" $archivos --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$etiqueta" $archivos \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Pletina $etiqueta" \
+              --notes-file fuente/CHANGELOG.md
+          fi
