@@ -134,13 +134,31 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" != "push" ]; then
             etiqueta="v$(node -p "require('./fuente/package.json').version")"
           fi
-          archivos=$(find paquetes -type f | sort)
-          echo "Publicando $etiqueta con:"; echo "$archivos"
+
+          # Los instaladores llevan espacios en el nombre («Pletina Setup 1.1.0.exe»):
+          # hay que pasarlos como un array, o el shell parte cada nombre en dos.
+          mapfile -t -d '' archivos < <(find paquetes -type f -print0 | sort -z)
+          if [ ${#archivos[@]} -eq 0 ]; then
+            echo "No hay nada que publicar" >&2
+            exit 1
+          fi
+          echo "Publicando $etiqueta con ${#archivos[@]} archivo(s):"
+          printf '  %s\n' "${archivos[@]}"
+
+          # Notas: solo la sección de esta versión del registro de cambios.
+          version="${etiqueta#v}"
+          awk -v v="$version" '
+            $0 ~ "^## " v " " { dentro = 1; next }
+            dentro && /^## / { exit }
+            dentro { print }
+          ' fuente/CHANGELOG.md > notas.md
+          [ -s notas.md ] || echo "Pletina $etiqueta" > notas.md
+
           if gh release view "$etiqueta" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$etiqueta" $archivos --repo "$GITHUB_REPOSITORY" --clobber
+            gh release upload "$etiqueta" "${archivos[@]}" --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$etiqueta" $archivos \
+            gh release create "$etiqueta" "${archivos[@]}" \
               --repo "$GITHUB_REPOSITORY" \
               --title "Pletina $etiqueta" \
-              --notes-file fuente/CHANGELOG.md
+              --notes-file notas.md
           fi
