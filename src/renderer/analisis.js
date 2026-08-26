@@ -18,9 +18,9 @@ import { rejillaCompleta } from '../shared/beats.js';
 const TASA_ANALISIS = 11025;
 const SEGUNDOS_MAXIMOS = 90;
 /**
- * La rejilla se ajusta sobre una ventana más larga que el tempo y la tonalidad:
- * cuantos más golpes entran en el ajuste, más fino sale el tempo, y de ahí sale
- * que la rejilla siga cuadrando en el minuto seis y no solo en el primero.
+ * Cuánta canción entra en el ajuste de la rejilla. Es más de lo que se mira
+ * para el tempo y la tonalidad: cuantos más golpes entran, más fino sale el
+ * tempo, y de ahí sale que la rejilla siga cuadrando en el minuto seis.
  */
 const SEGUNDOS_REJILLA = 240;
 
@@ -81,18 +81,7 @@ export async function analizarPista(id, contexto) {
     key: tono.confianza >= 0.55 ? tono.cifrado : '',
     tonalidad: tono.confianza >= 0.55 ? tono.tonalidad : '',
     keyConfianza: tono.confianza,
-    rejilla: rejilla ?? {
-      bpm: 0,
-      offset: 0,
-      fuerza: 0,
-      tiempoFuerte: 0,
-      fuerzaCompas: 0,
-      compasFuerte: 0,
-      fuerzaFrase: 0,
-      compasesPorFrase: 4,
-      tiemposPorCompas: 4,
-      porBombo: false,
-      entrada: 0,
-    },
+    // Sin tempo no hay rejilla que valga: se guarda que se ha mirado y ya.
+    rejilla,
   };
 }

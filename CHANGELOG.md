@@ -26,13 +26,22 @@ entera en vez de leyendo el código.
   Con el tempo ajustado no son lo mismo, y por eso una transición se recortaba
   un compás sin necesidad —o se pasaba de largo del final—.
 
+- **Lo que no tiene pulso ya no se reanaliza en cada lote.** Hay música sin
+  tempo que agarrar —una charla, un ambiente, un minuto de ruido—; ahora se
+  recuerda que se intentó, y solo se repite si lo pides.
+
 También: la nota de la pantalla del mezclador decía que se pincha en compás y
 por el principio del archivo, que es lo que hacía la versión anterior.
 
-Comprobado sobre la aplicación real, no solo en pruebas unitarias: los tres
-estilos de entrada —cambio de graves, fundido largo y corte— sin un silencio ni
-una excepción, y encadenar mezcla tras mezcla sin que la música se pare. 227
-pruebas.
+Y una prueba nueva, `npm run test:cadena`: tres canciones encadenadas solas, que
+es como se usa el mezclador de verdad. De ahí salieron dos de los errores de
+arriba —una sola transición, por muy medida que esté, no los enseña—. Con ella,
+`npm run verify` comprueba lint, 231 pruebas, el arranque real, arrastrar y
+soltar, una transición con lupa y una sesión entera.
+
+Comprobado también sobre la aplicación real: los tres estilos de entrada
+—cambio de graves, fundido largo y corte— sin un silencio ni una excepción, y
+mezcla tras mezcla sin que la música se pare.
 
 ## 3.1.0 — 2026-08-23
 
@@ -120,7 +129,7 @@ exactamente cuándo.
 
 ### Por dentro
 
-- 227 pruebas (`npm test`), 29 de ellas sobre la rejilla, con una que fabrica
+- 226 pruebas (`npm test`), 29 de ellas sobre la rejilla, con una que fabrica
   cuatro minutos de música y comprueba que el último golpe sigue cayendo donde
   debe.
 - `npm run test:mezcla` mide ahora también el análisis en lote, el desfase entre

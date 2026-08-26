@@ -27,7 +27,7 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "icons": "node build/make-icons.mjs",
-    "verify": "npm run lint && npm test && npm run smoke && npm run test:arrastre && npm run test:mezcla",
+    "verify": "npm run lint && npm test && npm run smoke && npm run test:arrastre && npm run test:mezcla && npm run test:cadena",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "dist:mac": "electron-builder --mac",
@@ -35,7 +35,8 @@
     "dist:linux": "electron-builder --linux",
     "smoke": "node scripts/smoke.mjs",
     "test:arrastre": "node scripts/prueba-arrastre.mjs",
-    "test:mezcla": "node scripts/prueba-mezcla.mjs"
+    "test:mezcla": "node scripts/prueba-mezcla.mjs",
+    "test:cadena": "node scripts/prueba-cadena.mjs"
   },
   "dependencies": {
     "music-metadata": "^11.15.0",

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ajustarRejilla,
+  analizada,
   detectarCompas,
   detectarFrase,
   duracionDeCompases,
@@ -295,5 +296,28 @@ describe('primerSonido', () => {
   it('con silencio entero no se inventa una entrada', () => {
     const { energia, tasa: tasaEnv } = envolventes(new Float32Array(11025 * 3), 11025);
     expect(primerSonido(energia, tasaEnv)).toBe(0);
+  });
+});
+
+describe('analizada', () => {
+  const rejilla = { bpm: 128, offset: 0.1, version: 2 };
+
+  it('con rejilla al día, sí', () => {
+    expect(analizada({ rejilla, analisis: { en: 1 } })).toBe(true);
+  });
+
+  it('con una rejilla vieja, no: hay que rehacerla', () => {
+    expect(analizada({ rejilla: { bpm: 128, offset: 0.1 }, analisis: { en: 1 } })).toBe(false);
+  });
+
+  it('sin analizar, no', () => {
+    expect(analizada({})).toBe(false);
+    expect(analizada(null)).toBe(false);
+  });
+
+  it('intentada y sin pulso, sí: no se repite en cada lote', () => {
+    // Una charla o un minuto de ruido no tienen tempo, y volver a mirarlo cada
+    // vez cuesta segundos por canción para nada.
+    expect(analizada({ bpm: 0, rejilla: null, analisis: { en: 1712345678 } })).toBe(true);
   });
 });

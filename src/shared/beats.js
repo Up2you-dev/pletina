@@ -36,6 +36,19 @@ export const rejillaVigente = (rejilla) => Boolean(
   rejilla && Number(rejilla.bpm) > 0 && Number(rejilla.version || 1) >= REJILLA_VERSION,
 );
 
+/**
+ * ¿Esta canción ya está analizada?
+ *
+ * Con rejilla al día, evidentemente. Y también cuando se intentó y no salió:
+ * hay música sin pulso que agarrar —una charla, un ambiente, un minuto de
+ * ruido—, y volver a intentarlo en cada lote es tiempo tirado. Forzando el
+ * análisis se repite igualmente.
+ */
+export function analizada(track) {
+  if (rejillaVigente(track?.rejilla)) return true;
+  return Boolean(track?.analisis?.en) && !track?.rejilla;
+}
+
 /* ---------------------------------------------------------- envolventes */
 
 /**
