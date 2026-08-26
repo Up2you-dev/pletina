@@ -1,5 +1,6 @@
 import { $, esc } from './dom.js';
 import { ICO } from './icons.js';
+import { formatPorcentaje } from '../../shared/format.js';
 import { BANDAS, NOMBRES_PRESET, PRESETS } from '../audio.js';
 import { tempoActual } from '../player.js';
 import { state } from '../state.js';
@@ -83,7 +84,10 @@ function pintar() {
   // El tempo se lee del reproductor, no de un ajuste guardado: durante una
   // mezcla lo manda el mezclador y el panel tiene que enseñar lo que suena.
   const tempo = tempoActual();
+  // El mando va de uno en uno; la etiqueta dice la verdad, que después de una
+  // mezcla puede ser un 1,6 % y no un 2 %.
   const porcentaje = Math.round((tempo.velocidad - 1) * 100);
+  const ajuste = Math.round((tempo.velocidad - 1) * 1000) / 10;
 
   panel.innerHTML = `
     <div class="sonido-cabecera">
@@ -103,13 +107,13 @@ function pintar() {
 
     <div class="sonido-cabecera con-linea">
       <h3>Tempo</h3>
-      ${porcentaje === 0 ? '' : '<button class="chip" data-tempo-cero>Volver a ×1</button>'}
+      ${ajuste === 0 ? '' : '<button class="chip" data-tempo-cero>Volver a ×1</button>'}
     </div>
     <div class="preamp">
       <span>Velocidad</span>
       <input type="range" min="-20" max="20" step="1" value="${porcentaje}" data-tempo
         aria-label="Ajuste de tempo en por ciento">
-      <span class="db">${porcentaje > 0 ? '+' : ''}${porcentaje} %</span>
+      <span class="db">${ajuste === 0 ? '0 %' : formatPorcentaje(ajuste)}</span>
     </div>
     <label class="interruptor ancho">
       <input type="checkbox" data-estirar${tempo.preservarTono ? ' checked' : ''}>
@@ -168,7 +172,7 @@ function alCambiar(evento) {
   }
   if (objetivo.dataset.tempo !== undefined) {
     acciones.cambiarTempo({ velocidad: 1 + Number(objetivo.value) / 100 });
-    objetivo.nextElementSibling.textContent = `${objetivo.value > 0 ? '+' : ''}${objetivo.value} %`;
+    objetivo.nextElementSibling.textContent = formatPorcentaje(Number(objetivo.value));
     return;
   }
   if (objetivo.dataset.estirar !== undefined) {

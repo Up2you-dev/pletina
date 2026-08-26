@@ -1,4 +1,5 @@
 import { duracionDeCompases, siguienteCompas, siguienteFrase } from './beats.js';
+import { formatPorcentaje } from './format.js';
 import { tonalidadesCompatibles } from './musica.js';
 
 /**
@@ -196,7 +197,7 @@ export function describirPlan(plan) {
   ];
   if (plan.sincronizado) {
     const porcentaje = Math.round((plan.velocidad - 1) * 1000) / 10;
-    partes.push(porcentaje === 0 ? 'ya van al mismo tempo' : `ajuste de tempo ${porcentaje > 0 ? '+' : ''}${porcentaje} %`);
+    partes.push(porcentaje === 0 ? 'ya van al mismo tempo' : `ajuste de tempo ${formatPorcentaje(porcentaje)}`);
   }
   return partes.join(' · ');
 }

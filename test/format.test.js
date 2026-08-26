@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { formatQuality, formatTime, formatTotal, formatWhen, plural } from '../src/shared/format.js';
+import {
+  formatPorcentaje, formatQuality, formatTime, formatTotal, formatWhen, plural,
+} from '../src/shared/format.js';
 
 describe('formatTime', () => {
   it('usa m:ss por debajo de la hora', () => {
@@ -57,7 +59,7 @@ describe('formatQuality', () => {
 
   it('con el tempo ajustado enseña el bpm que suena y cuánto se ha estirado', () => {
     expect(formatQuality({ codec: 'flac', bpm: 128, key: 'Am' }, { velocidad: 1.016 }))
-      .toBe('FLAC · 130 bpm · Am · +1.6 %');
+      .toBe('FLAC · 130 bpm · Am · +1,6 %');
     expect(formatQuality({ codec: 'flac', bpm: 128 }, { velocidad: 0.95 }))
       .toBe('FLAC · 122 bpm · -5 %');
     // A velocidad normal no aparece ningún porcentaje.
@@ -81,5 +83,18 @@ describe('formatWhen', () => {
 
   it('marca lo que nunca ha sonado', () => {
     expect(formatWhen(0, now)).toBe('—');
+  });
+});
+
+describe('formatPorcentaje', () => {
+  it('escribe el porcentaje como se escribe en castellano', () => {
+    expect(formatPorcentaje(1.6)).toBe('+1,6 %');
+    expect(formatPorcentaje(-5)).toBe('-5 %');
+    expect(formatPorcentaje(0)).toBe('0 %');
+  });
+
+  it('no arrastra decimales de adorno', () => {
+    expect(formatPorcentaje(1.58730)).toBe('+1,6 %');
+    expect(formatPorcentaje(12.0)).toBe('+12 %');
   });
 });

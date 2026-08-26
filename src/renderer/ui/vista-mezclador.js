@@ -1,7 +1,7 @@
 import { coverHtml, esc } from './dom.js';
 import { ICO } from './icons.js';
 import { ESTILOS } from '../../shared/mezcla.js';
-import { formatTime } from '../../shared/format.js';
+import { formatPorcentaje, formatTime } from '../../shared/format.js';
 import { estadoDeMezcla, prepararPlan } from '../mezclador.js';
 import { estadoDePlatos } from '../player.js';
 import { state } from '../state.js';
@@ -149,7 +149,7 @@ function platoVivo(estado, papel) {
   const ajuste = Math.round((estado.velocidad - 1) * 1000) / 10;
   const datos = [
     `${Math.round(estado.grave)} dB de graves`,
-    ajuste === 0 ? 'a su tempo' : `${ajuste > 0 ? '+' : ''}${ajuste} %`,
+    ajuste === 0 ? 'a su tempo' : formatPorcentaje(ajuste),
     estado.estirando ? 'tono intacto' : 'tono desplazado',
   ];
   return `<div class="plato-vivo${estado.grave <= -20 ? ' sin-graves' : ''}">

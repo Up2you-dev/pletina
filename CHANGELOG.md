@@ -26,6 +26,9 @@ entera en vez de leyendo el código.
   Con el tempo ajustado no son lo mismo, y por eso una transición se recortaba
   un compás sin necesidad —o se pasaba de largo del final—.
 
+- **Los porcentajes, con coma.** «+1,6 %», como se escribe en castellano y como
+  ya se escribía «44,1 kHz». Y el panel de sonido decía «+2 %» donde el
+  reproductor decía «+1,6 %»: era el mismo número redondeado de dos maneras.
 - **Lo que no tiene pulso ya no se reanaliza en cada lote.** Hay música sin
   tempo que agarrar —una charla, un ambiente, un minuto de ruido—; ahora se
   recuerda que se intentó, y solo se repite si lo pides.
@@ -36,7 +39,7 @@ por el principio del archivo, que es lo que hacía la versión anterior.
 Y una prueba nueva, `npm run test:cadena`: tres canciones encadenadas solas, que
 es como se usa el mezclador de verdad. De ahí salieron dos de los errores de
 arriba —una sola transición, por muy medida que esté, no los enseña—. Con ella,
-`npm run verify` comprueba lint, 231 pruebas, el arranque real, arrastrar y
+`npm run verify` comprueba lint, 233 pruebas, el arranque real, arrastrar y
 soltar, una transición con lupa y una sesión entera.
 
 Comprobado también sobre la aplicación real: los tres estilos de entrada

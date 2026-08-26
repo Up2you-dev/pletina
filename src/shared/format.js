@@ -29,6 +29,15 @@ export function plural(n, one, many) {
  * Ficha técnica corta: «FLAC · 44,1 kHz · 1024 kbps · 128 bpm · Am».
  * El tempo y la tonalidad solo aparecen cuando se han analizado.
  */
+/**
+ * Un porcentaje como se escribe en castellano: coma decimal, sin ceros de
+ * adorno y con el signo cuando suma. «+1,6 %», «-5 %», «0 %».
+ */
+export function formatPorcentaje(valor) {
+  const redondeado = Math.round(valor * 10) / 10;
+  return `${redondeado > 0 ? '+' : ''}${String(redondeado).replace('.', ',')} %`;
+}
+
 export function formatQuality(track, { velocidad = 1 } = {}) {
   const parts = [];
   if (track.codec) parts.push(String(track.codec).toUpperCase());
@@ -39,7 +48,7 @@ export function formatQuality(track, { velocidad = 1 } = {}) {
   if (track.bpm) parts.push(`${Math.round(track.bpm * velocidad)} bpm`);
   if (track.key) parts.push(track.key);
   const ajuste = Math.round((velocidad - 1) * 1000) / 10;
-  if (ajuste) parts.push(`${ajuste > 0 ? '+' : ''}${ajuste} %`);
+  if (ajuste) parts.push(formatPorcentaje(ajuste));
   return parts.join(' · ');
 }
 
