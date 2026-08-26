@@ -260,6 +260,28 @@ describe('cuadrar como un pinchadiscos', () => {
     expect(plan.compases).toBeGreaterThanOrEqual(1);
   });
 
+  it('lo que le queda a la canción se mide en segundos de reloj, no de archivo', () => {
+    // Un plato al 90 % gasta sus catorce últimos segundos de archivo en quince
+    // de reloj: con el ajuste bien hecho la transición entera cabe; midiendo en
+    // segundos de archivo se recortaría un compás sin necesidad.
+    const lento = planDeMezcla({
+      saliente: {
+        bpm: 128, duracion: 100, posicion: 86, rejilla: rejilla(128),
+      },
+      entrante: { bpm: 128, duracion: 300, rejilla: rejilla(128) },
+      compases: 8,
+      velocidadSaliente: 0.9,
+    });
+    const normal = planDeMezcla({
+      saliente: {
+        bpm: 128, duracion: 100, posicion: 86, rejilla: rejilla(128),
+      },
+      entrante: { bpm: 128, duracion: 300, rejilla: rejilla(128) },
+      compases: 8,
+    });
+    expect(lento.duracion).toBeGreaterThan(normal.duracion);
+  });
+
   it('la que entra también deja sitio en los medios hasta el cambio', () => {
     const plan = planDeMezcla(base);
     const medios = eventosDe(plan, 'entrante', 'medio');

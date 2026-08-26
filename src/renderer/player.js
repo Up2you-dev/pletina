@@ -38,6 +38,8 @@ const otro = () => platos[1 - activo];
 
 let encadenando = false;
 let avisadoFinal = false;
+/** Número de la mezcla en curso: distingue una transición de la siguiente. */
+let mezclaActual = 0;
 let fallos = 0;
 let guardado = 0;
 let warmup = null;
@@ -279,6 +281,7 @@ export function warmNext(id) {
 function cancelarFundido() {
   if (!encadenando) return;
   encadenando = false;
+  mezclaActual += 1;
   const otroPlato = otro();
   otroPlato.el.pause();
   otroPlato.el.removeAttribute('src');
@@ -307,17 +310,24 @@ export function mezclar(id, plan, { estirarTiempo = true } = {}) {
   if (!track || !entrante.nodos || !saliente.nodos) return false;
 
   encadenando = true;
+  // Cada mezcla lleva su número. Una transición dura quince segundos y deja
+  // temporizadores por el camino; si se corta a la mitad y se lanza otra, los
+  // de la primera llegan tarde y pararían el plato de la segunda.
+  mezclaActual += 1;
+  const mia = mezclaActual;
+  const esMia = () => encadenando && mezclaActual === mia;
+
   entrante.id = id;
   entrante.el.src = window.pletina.media.track(id);
 
+  // La mezcla manda sobre el tempo: a partir de aquí el reproductor va al que
+  // ha decidido el plan, y el panel de sonido lo refleja.
   const velEntrante = plan.velocidad || 1;
+  tempo = { velocidad: velEntrante, preservarTono: Boolean(estirarTiempo), origen: 'mezcla' };
   // Después del `src`, nunca antes: asignar la fuente relanza el algoritmo de
   // carga del elemento y eso devuelve `playbackRate` a 1. El ajuste de tempo se
-  // perdía entero y la mezcla salía desincronizada aunque el plan fuese correcto.
-  // Se repite con los metadatos por si la carga vuelve a pisarlo.
-  // La mezcla manda sobre el tempo: a partir de aquí el reproductor va al tempo
-  // que ha decidido el plan, y el panel de sonido lo refleja.
-  tempo = { velocidad: velEntrante, preservarTono: Boolean(estirarTiempo), origen: 'mezcla' };
+  // perdía entero y la mezcla salía desincronizada aunque el plan fuese
+  // correcto. Se repite con los metadatos por si la carga vuelve a pisarlo.
   const preparar = () => aplicarTempo(entrante);
   preparar();
   entrante.el.addEventListener('loadedmetadata', preparar, { once: true });
@@ -342,7 +352,7 @@ export function mezclar(id, plan, { estirarTiempo = true } = {}) {
   // el retardo de `play()`. Si no lo tiene, se espera y se corrige el desfase.
   const margen = Math.min(espera, Math.max(0, plan.inicioEntrante / velEntrante));
   const arrancar = () => {
-    if (!encadenando) return;
+    if (!esMia()) return;
     const retraso = Math.max(0, motor.tiempo - (t0 - margen));
     try {
       entrante.el.currentTime = Math.max(0, plan.inicioEntrante - (margen - retraso) * velEntrante);
@@ -367,7 +377,7 @@ export function mezclar(id, plan, { estirarTiempo = true } = {}) {
    * acelerando un pelo hasta recuperarlo, no dando un salto.
    */
   const ajustarFase = () => {
-    if (!encadenando || entrante.id !== id) return;
+    if (!esMia() || entrante.id !== id) return;
     const velSalienteAhora = saliente.el.playbackRate || 1;
     const esperado = plan.inicioEntrante
       + ((saliente.el.currentTime - plan.arranque) * velEntrante) / velSalienteAhora;
@@ -379,7 +389,12 @@ export function mezclar(id, plan, { estirarTiempo = true } = {}) {
     const segundos = Math.min(2, Math.abs(error) / (velEntrante * 0.02));
     entrante.el.playbackRate = velEntrante * (1 + empuje);
     setTimeout(() => {
-      if (encadenando && entrante.id === id) entrante.el.playbackRate = velEntrante;
+      // El empujón hay que deshacerlo aunque la mezcla ya haya terminado, o el
+      // plato se queda un 2 % rápido el resto de la canción. Pero solo si sigue
+      // mandando este tempo: si alguien ha tocado el mando mientras tanto, el
+      // suyo gana.
+      const suyo = tempo.origen === 'mezcla' && tempo.velocidad === velEntrante;
+      if (entrante.id === id && suyo) entrante.el.playbackRate = velEntrante;
     }, segundos * 1000);
   };
   setTimeout(ajustarFase, (retardoArranque + 0.35) * 1000);
@@ -393,7 +408,7 @@ export function mezclar(id, plan, { estirarTiempo = true } = {}) {
 
   const finaliza = (espera + plan.duracion + 0.25) * 1000;
   setTimeout(() => {
-    if (!encadenando) return;
+    if (!esMia()) return;
     encadenando = false;
     saliente.el.pause();
     saliente.el.removeAttribute('src');
@@ -558,7 +573,7 @@ for (const p of platos) {
     if (!esActivo(evento)) return;
     hooks.onTick(el.currentTime, el.duration);
 
-    const restante = (el.duration || 0) - el.currentTime;
+    const restante = ((el.duration || 0) - el.currentTime) / (el.playbackRate || 1);
     if (!avisadoFinal && !encadenando && Number.isFinite(restante) && restante > 0) {
       const margen = hooks.margenDeFundido?.() ?? 0;
       if (margen > 0 && restante <= margen) {

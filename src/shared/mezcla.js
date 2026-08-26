@@ -48,6 +48,7 @@ export function planDeMezcla({
   ajustarTempo = true,
   entradaEntrante = 0,
   limite = LIMITE_AJUSTE,
+  velocidadSaliente = 1,
 } = {}) {
   const avisos = [];
   const bpmSale = Number(saliente?.bpm) || 0;
@@ -104,8 +105,11 @@ export function planDeMezcla({
     ? redondear(cuando(Math.max(0, entradaEntrante - 0.06), entrante.rejilla))
     : redondear(entradaEntrante);
 
+  // De aquí en adelante, todo en segundos de reloj. Lo que le queda a un
+  // archivo no es lo que le queda a la sala: un plato ajustado un 10 % gasta su
+  // último minuto en cincuenta y cuatro segundos.
   const restante = Number(saliente?.duracion)
-    ? redondear(saliente.duracion - arranque)
+    ? redondear((saliente.duracion - arranque) / (velocidadSaliente || 1))
     : Infinity;
   if (restante < duracion) {
     avisos.push('La canción que sale se acaba antes de terminar la transición: se acorta.');
@@ -113,7 +117,7 @@ export function planDeMezcla({
   // Y lo mismo por el otro lado: si la que entra es corta —una intro, un
   // interludio—, la transición no puede durar más que ella.
   const cabeEntrante = Number(entrante?.duracion)
-    ? redondear(entrante.duracion - inicioEntrante)
+    ? redondear((entrante.duracion - inicioEntrante) / (velocidad || 1))
     : Infinity;
   if (cabeEntrante < duracion) {
     avisos.push('La canción que entra es más corta que la transición: se acorta.');

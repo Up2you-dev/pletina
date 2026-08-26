@@ -4,6 +4,36 @@ Las versiones siguen [SemVer](https://semver.org/lang/es/). Cada una se
 construye desde la pestaña *Actions* del repositorio; una etiqueta `v1.2.3`
 además publica los instaladores sueltos en la página de versiones.
 
+## 3.1.1 — 2026-08-23
+
+Repaso a fondo del mezclador, buscando lo que se rompe al usarlo de verdad y no
+en una transición limpia. Cuatro cosas, todas encontradas probando la aplicación
+entera en vez de leyendo el código.
+
+- **La música se paraba a media canción si encadenabas dos mezclas.** Una
+  transición deja temporizadores por el camino —el que la cierra, el que corrige
+  el desfase—, y los de una mezcla cortada llegaban tarde y paraban el plato de
+  la siguiente. Ahora cada mezcla lleva su número y ningún aviso atrasado toca
+  la que está sonando.
+- **El empujón de sincronía podía quedarse puesto.** Si la transición terminaba
+  antes de deshacerlo, el plato se quedaba un 2 % rápido para el resto de la
+  canción. Ahora se deshace siempre, salvo que hayas tocado tú el mando de tempo
+  mientras tanto.
+- **El botón «Mezclar ahora» se ofrecía con la misma canción en la cola** y al
+  pulsarlo solo decía que no había podido preparar la mezcla. Ahora lo dice
+  antes: «La siguiente de la cola es la que ya está sonando».
+- **Lo que le queda a una canción se mide en segundos de reloj, no de archivo.**
+  Con el tempo ajustado no son lo mismo, y por eso una transición se recortaba
+  un compás sin necesidad —o se pasaba de largo del final—.
+
+También: la nota de la pantalla del mezclador decía que se pincha en compás y
+por el principio del archivo, que es lo que hacía la versión anterior.
+
+Comprobado sobre la aplicación real, no solo en pruebas unitarias: los tres
+estilos de entrada —cambio de graves, fundido largo y corte— sin un silencio ni
+una excepción, y encadenar mezcla tras mezcla sin que la música se pare. 227
+pruebas.
+
 ## 3.1.0 — 2026-08-23
 
 La versión que hace que el mezclador **suene y se vea cuadrado**. La 3.0.0
@@ -90,7 +120,7 @@ exactamente cuándo.
 
 ### Por dentro
 
-- 225 pruebas (`npm test`), 26 de ellas sobre la rejilla, con una que fabrica
+- 227 pruebas (`npm test`), 29 de ellas sobre la rejilla, con una que fabrica
   cuatro minutos de música y comprueba que el último golpe sigue cayendo donde
   debe.
 - `npm run test:mezcla` mide ahora también el análisis en lote, el desfase entre

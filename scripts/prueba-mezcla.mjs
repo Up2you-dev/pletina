@@ -357,22 +357,32 @@ comprobar('y no hay un solo silencio', medido.mudos === 0, `${medido.mudos}`);
 /* --------------------------------------------- cortar a mitad de mezcla */
 
 console.log('interrupciones:');
-// Se vuelve a encolar la que ya sonó y se lanza otra mezcla para cortarla.
-await evaluar(`(async () => {
-  const q = await import('./shared/queue.js');
-  const st = await import('./state.js');
-  st.state.queue = q.enqueueNext(st.state.queue, ['${puestas.sale}']);
-})()`);
-// Tocar la cola desde fuera no repinta la pantalla: se vuelve a entrar.
-await evaluar(`[...document.querySelectorAll('.nav-item')][0].click()`);
+// Transiciones cortas para no alargar la prueba: cuatro compases.
+await evaluar(`document.querySelector('[data-mezcla="compases"][data-valor="4"]')?.click()`);
 await sleep(300);
-await evaluar(`[...document.querySelectorAll('.nav-item')].find(n => n.textContent.includes('Mezclador')).click()`);
-await sleep(500);
+
+/** Encola una canción y repinta: tocar la cola desde fuera no repinta solo. */
+const encolarYVolver = async (cancion) => {
+  await evaluar(`(async () => {
+    const q = await import('./shared/queue.js');
+    const st = await import('./state.js');
+    st.state.queue = q.enqueueNext(st.state.queue, ['CANCION']);
+  })()`.replace('CANCION', cancion));
+  await evaluar(`[...document.querySelectorAll('.nav-item')][0].click()`);
+  await sleep(250);
+  await evaluar(`[...document.querySelectorAll('.nav-item')].find(n => n.textContent.includes('Mezclador')).click()`);
+  await sleep(400);
+};
+
+await encolarYVolver(puestas.sale);
+const arrancoLaSegunda = Date.now();
 await evaluar(`document.querySelector('[data-mezcla="ahora"]')?.click()`);
 const segunda = await evaluar(`(async () => {
   const m = await import('./mezclador.js');
   const { enCurso, disponible } = m.estadoDeMezcla();
-  return enCurso ? { espera: enCurso.espera } : { motivo: disponible.motivo ?? 'sin motivo' };
+  return enCurso
+    ? { espera: enCurso.espera, duracion: enCurso.plan.duracion }
+    : { motivo: disponible.motivo ?? 'sin motivo' };
 })()`);
 comprobar('se puede lanzar otra mezcla después de la primera', Boolean(segunda?.espera !== undefined), segunda?.motivo);
 if (segunda?.espera !== undefined) {
@@ -402,6 +412,42 @@ if (segunda?.espera !== undefined) {
   comprobar('y con los medios puestos', despues.medios.every(g => g === 0), `medios ${JSON.stringify(despues.medios)}`);
   comprobar('y a volumen entero', despues.ganancias.every(g => g === 1), JSON.stringify(despues.ganancias));
   comprobar('la pantalla deja de decir que está mezclando', !despues.enCurso && !despues.mezclando);
+
+  // Y ahora lo que de verdad rompía: lanzar otra mezcla justo después. Los
+  // temporizadores de la cortada siguen vivos, y el que cierra la transición
+  // paraba el plato de la nueva a media canción.
+  // La que no esté sonando: una canción no se mezcla consigo misma.
+  const sonandoAhora = await evaluar(`(async () => (await import('./state.js')).state.currentId)()`);
+  await encolarYVolver(sonandoAhora === puestas.entra ? puestas.sale : puestas.entra);
+  await evaluar(`document.querySelector('[data-mezcla="ahora"]')?.click()`);
+  await sleep(300);
+  const lanzada = await evaluar(`(async () => {
+    const m = await import('./mezclador.js');
+    const st = await import('./state.js');
+    const { enCurso, disponible } = m.estadoDeMezcla();
+    return {
+      enCurso: Boolean(enCurso),
+      motivo: disponible.motivo ?? '',
+      sonando: st.state.playing,
+      cola: st.state.queue.manual.length + (st.state.queue.order.length - st.state.queue.index - 1),
+    };
+  })()`);
+  comprobar('se puede encadenar otra mezcla justo después de cortar', lanzada.enCurso,
+    JSON.stringify(lanzada));
+
+  // Se espera a pasado el punto donde habría terminado la mezcla cortada.
+  const faltan = (segunda.espera + segunda.duracion + 1.5) * 1000 - (Date.now() - arrancoLaSegunda);
+  if (faltan > 0) await sleep(faltan);
+  const sigueSonando = await evaluar(`(async () => {
+    const p = await import('./player.js');
+    const platos = p.estadoDePlatos().filter(x => x.id);
+    return {
+      sonando: platos.filter(x => x.sonando && x.ganancia > 0.5).length,
+      detalle: platos.map(x => ({ g: Math.round(x.ganancia * 100) / 100, s: x.sonando })),
+    };
+  })()`);
+  comprobar('la música no se para cuando vencen los avisos de la mezcla cortada',
+    sigueSonando.sonando >= 1, JSON.stringify(sigueSonando.detalle));
 }
 
 clearTimeout(guardia);

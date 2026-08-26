@@ -107,6 +107,8 @@ export function prepararPlan(idEntrante = siguienteEnLaCola()) {
     compases: ajustes.compases,
     estilo: ajustes.estilo,
     ajustarTempo: ajustes.ajustarTempo,
+    // Para convertir lo que le queda al archivo en lo que le queda a la sala.
+    velocidadSaliente: velocidad,
   });
 
   const faltan = [saliente, entrante].filter((f) => !f.analizada);
@@ -134,7 +136,13 @@ export function puedeMezclar() {
   if (!state.currentId || !state.playing) return { puede: false, motivo: 'No hay nada sonando.' };
   if (player.mezclando()) return { puede: false, motivo: 'Ya hay una mezcla en marcha.' };
   if (!player.hayMotor()) return { puede: false, motivo: 'Este equipo no permite mezclar.' };
-  if (!siguienteEnLaCola()) return { puede: false, motivo: 'No hay ninguna canción esperando en la cola.' };
+  const siguiente = siguienteEnLaCola();
+  if (!siguiente) return { puede: false, motivo: 'No hay ninguna canción esperando en la cola.' };
+  // Una canción no se mezcla consigo misma: sin esto el botón se ofrecía y al
+  // pulsarlo solo decía que no había podido preparar la mezcla.
+  if (siguiente === state.currentId) {
+    return { puede: false, motivo: 'La siguiente de la cola es la que ya está sonando.' };
+  }
   return { puede: true };
 }
 
@@ -156,10 +164,14 @@ export function mezclarAhora(idEntrante = siguienteEnLaCola()) {
   if (!lanzada) return { ok: false, motivo: 'El reproductor no ha podido tomar el segundo plato.' };
 
   enCurso = { ...preparado, desde: Date.now() };
+  const esta = enCurso;
   avisar();
   // Red de seguridad: si por lo que sea no llega el aviso de fin del
-  // reproductor, la pantalla no se queda mezclando para siempre.
-  setTimeout(terminarMezcla, (preparado.espera + preparado.plan.duracion + 0.6) * 1000);
+  // reproductor, la pantalla no se queda mezclando para siempre. Solo cierra la
+  // suya: si ya hay otra en marcha, esta llega tarde y no le toca nada.
+  setTimeout(() => {
+    if (enCurso === esta) terminarMezcla();
+  }, (preparado.espera + preparado.plan.duracion + 0.6) * 1000);
   return { ok: true, ...preparado };
 }
 

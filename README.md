@@ -58,7 +58,7 @@ npm run dist:win     # y esto te deja el instalador en release\
 Y para lo demás:
 
 ```bash
-npm run verify       # lint + 225 pruebas + arranque real, arrastre y mezcla
+npm run verify       # lint + 227 pruebas + arranque real, arrastre y mezcla
 npm run dist:mac     # .dmg (arm64 + x64)  · hay que ejecutarlo EN un Mac
 npm run dist:linux   # AppImage + .deb
 ```
@@ -258,7 +258,7 @@ y los empaqueta en `.ico` y `.icns`).
 
 ## Pruebas
 
-- `npm test` — 225 pruebas sobre la lógica pura (cola, orden y búsqueda,
+- `npm test` — 227 pruebas sobre la lógica pura (cola, orden y búsqueda,
   formato, `Range`), sobre el almacén y la biblioteca contra archivos de verdad
   en carpetas temporales —análisis incremental, ausencias, discos desconectados,
   correcciones de etiquetas, listas y M3U de ida y vuelta— y de contrato entre
@@ -270,7 +270,7 @@ y los empaqueta en `.ico` y `.icns`).
   comprueba que acaba en la biblioteca. Existe porque el error que rompía
   arrastrar y soltar vivía en la costura entre el renderizador y el preload,
   donde ninguna de las otras dos podía verlo.
-- `npm run test:mezcla` — veintiuna comprobaciones sobre la aplicación de
+- `npm run test:mezcla` — veintitrés comprobaciones sobre la aplicación de
   verdad. Fabrica dos canciones con bombo a 128 y 126 —una con cuatro segundos
   de silencio delante—, las analiza en lote desde la biblioteca y mide la
   transición sobre el grafo de audio: que el tempo se afina hasta la centésima,
