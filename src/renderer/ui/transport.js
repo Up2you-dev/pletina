@@ -165,14 +165,33 @@ export function helpPopover(anchor, info, popover) {
     ['Cola de reproducción', 'Q'],
     ['Favorita', 'F'],
     ['Ir a lo que suena', 'G'],
+    ['Adelantar / retroceder 10 s', 'Alt + → ←'],
     ['Mover dentro de una lista', 'Alt + ↑ ↓'],
     ['Seleccionar varias', 'Mayús · Ctrl/Cmd + clic'],
+  ];
+  // La cabina tiene las suyas: mientras se escucha no se puede estar con el
+  // ratón, y un pinchadiscos cuenta compases con los dedos.
+  const cabina = [
+    ['Mezclar ahora', 'M'],
+    ['Empujar el plato', ', .'],
+    ['Un compás atrás / adelante', '[ ]'],
+    ['Preescuchar el plato B', 'B'],
+    ['Ir a las vistas', 'Ctrl + 1…6'],
+    ['Ecualizador y mezcla', 'Ctrl + E'],
   ];
   popover(anchor, [
     { type: 'cap', label: 'Atajos de teclado' },
     {
       type: 'html',
       html: `<div class="shortcuts">${rows
+        .map(([label, key]) => `<div><span>${esc(label)}</span><span class="kbd">${esc(key)}</span></div>`)
+        .join('')}</div>`,
+    },
+    { type: 'sep' },
+    { type: 'cap', label: 'En la cabina' },
+    {
+      type: 'html',
+      html: `<div class="shortcuts">${cabina
         .map(([label, key]) => `<div><span>${esc(label)}</span><span class="kbd">${esc(key)}</span></div>`)
         .join('')}</div>`,
     },

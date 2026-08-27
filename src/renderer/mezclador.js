@@ -262,6 +262,34 @@ export async function ponerElUnoEnB() {
   return { ok: true };
 }
 
+/**
+ * Cuenta el tempo del plato B al doble o a la mitad.
+ *
+ * Hay ritmos que se pueden contar de las dos maneras y las dos son ciertas: un
+ * drum & bass son 174 o son 87, un hip-hop de bombo espaciado son 87 o son 174.
+ * El análisis elige la lectura más habitual, y a veces se equivoca. Esto no
+ * vuelve a analizar nada ni mueve un golpe de sitio: solo cambia la cuenta, con
+ * la rejilla anclada en el «uno» que ya está puesto.
+ */
+export async function cambiarOctavaEnB(factor) {
+  const actual = platoB();
+  const rejilla = actual?.ficha?.rejilla;
+  if (!rejilla?.bpm) return { ok: false, motivo: 'Esa canción no tiene rejilla que cambiar.' };
+  const bpm = rejilla.bpm * factor;
+  if (bpm < 40 || bpm > 260) {
+    return { ok: false, motivo: `A ${Math.round(bpm)} ya no es un tempo que se pueda pinchar.` };
+  }
+
+  const guardada = await window.pletina.track.rejilla(actual.id, { factor });
+  const track = getTrack(actual.id);
+  if (track && guardada?.rejilla) {
+    track.rejilla = guardada.rejilla;
+    track.bpm = guardada.bpm ?? track.bpm;
+  }
+  avisar();
+  return { ok: true, bpm: guardada?.rejilla?.bpm ?? bpm };
+}
+
 /** ¿Se puede mezclar ahora mismo? */
 export function puedeMezclar() {
   if (!state.currentId || !state.playing) return { puede: false, motivo: 'No hay nada sonando.' };

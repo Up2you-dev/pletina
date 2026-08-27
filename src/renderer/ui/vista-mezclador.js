@@ -42,11 +42,28 @@ export function bindCabina(handlers) {
 
 const conComa = (numero, decimales = 1) => numero.toFixed(decimales).replace('.', ',');
 
+/**
+ * Cuánto se puede fiar uno de esta rejilla, dicho como se dice en una cabina.
+ *
+ * Es lo que faltaba: la aplicación sabía cuándo una rejilla era dudosa y se lo
+ * callaba, así que el usuario descubría el problema pinchando. Un tempo que se
+ * va no es un error del análisis, es una canción tocada a mano; pero hay que
+ * decirlo antes, no después.
+ */
+function fiabilidad(rejilla) {
+  if (!rejilla?.bpm) return '';
+  if (rejilla.aMano) return 'rejilla puesta a mano';
+  if ((rejilla.deriva ?? 0) > 0.5) return 'el tempo se mueve · cuadra a ojo';
+  if ((rejilla.fuerza ?? 1) < 0.25) return 'pulso flojo · repasa la rejilla';
+  return '';
+}
+
 function datosDe(ficha, extra = []) {
   return [
     ficha.bpm ? `${conComa(ficha.bpm)} bpm` : 'sin tempo',
     ficha.tonalidad || ficha.key || 'sin tonalidad',
     ficha.rejilla?.porBombo ? 'rejilla por bombo' : '',
+    fiabilidad(ficha.rejilla),
     ...extra,
   ].filter(Boolean).map((d) => esc(d)).join(' · ');
 }
@@ -137,6 +154,10 @@ export function pintarMezclador() {
           title="Un compás adelante">Compás${ICO.next}</button>
         <button class="btn pequeno" data-mezcla="poner-uno"${platoB ? '' : ' disabled'}
           title="Mover el «uno» de la rejilla a donde está el plato">${ICO.check}El uno está aquí</button>
+        <button class="btn pequeno" data-mezcla="octava" data-valor="2"${platoB?.ficha?.rejilla ? '' : ' disabled'}
+          title="Contar el tempo al doble, sin mover un golpe de sitio">×2</button>
+        <button class="btn pequeno" data-mezcla="octava" data-valor="0.5"${platoB?.ficha?.rejilla ? '' : ' disabled'}
+          title="Contar el tempo a la mitad, sin mover un golpe de sitio">÷2</button>
         <button class="btn btn-ghost pequeno" data-mezcla="soltar-b"${platoB ? '' : ' disabled'}>
           ${ICO.x}Quitar</button>
       </div>
@@ -243,11 +264,19 @@ function pintarCuadro(raiz) {
 
     const ondas = ficha?.id ? ondaCargada(ficha.id) : null;
     if (ficha?.id && !ondas) pedirOnda(ficha.id);
+    // Un hueco en blanco no dice nada. Si no hay onda que pintar, el lienzo
+    // explica por qué y qué hacer, que es lo único que hay que saber ahí.
+    let mensaje = '';
+    if (!ficha?.id) mensaje = cual === 'b' ? 'plato vacío' : 'no suena nada';
+    else if (!ondas) {
+      mensaje = ficha.analizada ? 'sin onda guardada · vuelve a analizarla' : 'sin analizar · pulsa «Analizar»';
+    }
     const estado = enPlato[cual];
     const tiempo = estado?.tiempo ?? (cual === 'a' ? activo.tiempo : preparado.tiempo) ?? 0;
     const apagado = cual === 'b' && !enCurso && !preparado.escuchando;
 
     pintarGeneral(general, ondas, {
+      mensaje,
       posicion: tiempo,
       duracion: ficha?.duracion || ondas?.duracion || 0,
       apagado,
@@ -256,6 +285,7 @@ function pintarCuadro(raiz) {
         : null,
     });
     pintarZoom(ampliada, ondas, {
+      mensaje,
       centro: tiempo,
       segundos: zoom,
       rejilla: ficha?.rejilla ?? null,

@@ -4,7 +4,7 @@ import {
   detectarTonalidad,
   envolventeDeAtaques,
 } from '../shared/musica.js';
-import { rejillaCompleta } from '../shared/beats.js';
+import { ANALISIS_VERSION, FUERZA_MINIMA, rejillaCompleta } from '../shared/beats.js';
 import { calcularOndas, empaquetar } from '../shared/ondas.js';
 
 /**
@@ -70,19 +70,29 @@ export async function analizarPista(id, contexto) {
   const { envolvente, tasa: tasaEnvolvente } = envolventeDeAtaques(tramo, tasa);
   const tempo = detectarTempo(envolvente, tasaEnvolvente);
   const tono = detectarTonalidad(chromaDeMuestras(tramo, tasa));
-  const bpmAprox = tempo.confianza >= 0.12 ? tempo.bpm : 0;
+  // El tempo del detector es solo el punto de partida, y por eso se coge
+  // incluso cuando viene con poca confianza: quien decide si hay pulso o no es
+  // la rejilla, que mira la canción entera y sabe distinguir un ritmo flojo de
+  // un ritmo que no está. Con el filtro puesto aquí, un hip-hop de bombo
+  // espaciado se quedaba sin rejilla y sin poder mezclarse: el peor final.
+  const bpmAprox = tempo.bpm;
 
   // La rejilla se ajusta sobre la canción entera —hasta un límite— y no sobre
   // un trozo: cuantos más golpes entran en el ajuste, más fino sale el tempo, y
   // mirando desde el principio se sabe además por dónde entra de verdad. Su
   // tempo es el bueno: el del detector es solo el punto de partida.
   const largo = Math.min(muestras.length, Math.floor(tasa * SEGUNDOS_REJILLA));
-  const rejilla = bpmAprox
+  const tanteo = bpmAprox
     ? rejillaCompleta(muestras.subarray(0, largo), tasa, bpmAprox)
     : null;
-  const bpm = rejilla?.bpm || bpmAprox;
+  // Sin contraste entre los golpes y lo que hay entre ellos aquí no hay pulso
+  // que agarrar —una charla, un ambiente, una grabación de campo—, y una
+  // rejilla inventada es peor que ninguna: cuadra el pinchazo con la nada.
+  const rejilla = tanteo && tanteo.fuerza >= FUERZA_MINIMA ? tanteo : null;
+  const bpm = rejilla?.bpm || 0;
 
   return {
+    version: ANALISIS_VERSION,
     bpm,
     bpmConfianza: tempo.confianza,
     key: tono.confianza >= 0.55 ? tono.cifrado : '',

@@ -3,6 +3,32 @@ import { Menu, app, shell } from 'electron';
 const isMac = process.platform === 'darwin';
 
 /**
+ * Los atajos que el propio renderizador escucha.
+ *
+ * En Windows el menú va oculto, así que sus atajos son la única forma de
+ * llegar a estas órdenes y por eso el renderizador los escucha también. Pero
+ * entonces un mismo Ctrl+P llegaría dos veces —una por el menú, otra por la
+ * ventana— y la canción se pararía y arrancaría en el mismo golpe de tecla.
+ * La etiqueta se sigue enseñando; lo que se quita es el registro del atajo.
+ */
+const ATAJOS_DEL_RENDERIZADOR = new Set([
+  'CmdOrCtrl+F', 'CmdOrCtrl+P', 'CmdOrCtrl+Right', 'CmdOrCtrl+Left',
+  'CmdOrCtrl+Up', 'CmdOrCtrl+Down', 'CmdOrCtrl+M', 'CmdOrCtrl+S', 'CmdOrCtrl+R',
+  'CmdOrCtrl+U', 'CmdOrCtrl+E', 'CmdOrCtrl+/',
+  'CmdOrCtrl+1', 'CmdOrCtrl+2', 'CmdOrCtrl+3', 'CmdOrCtrl+4', 'CmdOrCtrl+5',
+  'Alt+Right', 'Alt+Left',
+]);
+
+/** Recorre la plantilla y desregistra los atajos que ya escucha la ventana. */
+function soltarAtajosRepetidos(items) {
+  for (const item of items) {
+    if (ATAJOS_DEL_RENDERIZADOR.has(item.accelerator)) item.registerAccelerator = false;
+    if (Array.isArray(item.submenu)) soltarAtajosRepetidos(item.submenu);
+  }
+  return items;
+}
+
+/**
  * Menú nativo. Es la diferencia visible entre «una web en una ventana» y una
  * aplicación: los atajos del sistema, el menú de la barra y el nombre real del
  * programa. Cada opción manda una orden al renderizador, que es quien sabe qué
@@ -140,7 +166,7 @@ export function buildMenu({ send, onAddFolder, onAddFiles, onImportPlaylist, onR
     },
   ];
 
-  const menu = Menu.buildFromTemplate(template);
+  const menu = Menu.buildFromTemplate(soltarAtajosRepetidos(template));
   Menu.setApplicationMenu(menu);
   return menu;
 }

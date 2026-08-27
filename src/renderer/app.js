@@ -39,6 +39,7 @@ import { olvidarOnda } from './ondas.js';
 import {
   alCambiarMezclador,
   cambiarAjustes,
+  cambiarOctavaEnB,
   cargarEnPlatoB,
   margenAutomatico,
   mezclarAhora,
@@ -671,6 +672,16 @@ const actions = {
         });
         return;
       }
+      case 'octava': {
+        cambiarOctavaEnB(Number(valor)).then((resultado) => {
+          if (!resultado.ok) toast(resultado.motivo);
+          else {
+            toast(`Ahora se cuenta a ${Math.round(resultado.bpm)} pulsaciones.`);
+            renderStage();
+          }
+        });
+        return;
+      }
       case 'analizar-par': {
         const preparado = prepararPlan();
         const ids = [preparado?.saliente?.id, preparado?.entrante?.id].filter(Boolean);
@@ -1072,11 +1083,63 @@ const transportActions = {
 
 /* -------------------------------------------------------------- teclado */
 
+/**
+ * Atajos con Ctrl o Cmd, los mismos que enseña el menú.
+ *
+ * Viven aquí y no solo en el menú porque el menú no está a la vista en Windows
+ * y sus aceleradores dependen del sistema; el menú los muestra, esta tabla los
+ * hace funcionar. Los del menú están marcados para no registrarse dos veces.
+ */
+const ATAJOS = new Map([
+  ['f', 'focus:search'],
+  ['p', 'play:toggle'],
+  ['ArrowRight', 'play:next'],
+  ['ArrowLeft', 'play:prev'],
+  ['ArrowUp', 'volume:up'],
+  ['ArrowDown', 'volume:down'],
+  ['m', 'volume:mute'],
+  ['s', 'toggle:shuffle'],
+  ['r', 'toggle:repeat'],
+  ['u', 'toggle:queue'],
+  ['1', 'view:library'],
+  ['2', 'view:albums'],
+  ['3', 'view:artists'],
+  ['4', 'view:favorites'],
+  ['5', 'view:recent'],
+  ['6', 'view:mezclador'],
+  ['e', 'abrir:sonido'],
+  ['/', 'help:shortcuts'],
+  ['alt+ArrowRight', 'seek:forward'],
+  ['alt+ArrowLeft', 'seek:back'],
+]);
+
+/**
+ * ¿Está el usuario escribiendo?
+ *
+ * Solo cuenta lo que se escribe: una casilla, un desplegable o un deslizador no
+ * son escribir. La versión de antes daba por escritura cualquier `input`, y eso
+ * dejaba media aplicación sin teclado: mueves el volumen o un mando del
+ * ecualizador con el ratón, el foco se queda ahí, y a partir de ese momento no
+ * responde ni el espacio. La tecla no estaba rota; estaba secuestrada.
+ */
+function escribiendo(elemento) {
+  if (!elemento) return false;
+  if (elemento.isContentEditable) return true;
+  if (elemento.matches?.('textarea')) return true;
+  if (!elemento.matches?.('input')) return false;
+  return !['range', 'checkbox', 'radio', 'button', 'submit', 'reset', 'color'].includes(elemento.type);
+}
+
+/** Teclas que un mando con el foco usa para lo suyo: ahí manda el navegador. */
+const DEL_MANDO = new Set([' ', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End']);
+
 function onKeyDown(event) {
   if (isDialogOpen()) return;
   const target = event.target;
-  const typing = target && (target.matches('input, select, textarea') || target.isContentEditable);
-  if (typing) {
+  // `matches` con interrogación porque no todo lo que recibe una tecla es un
+  // elemento: el documento también, y ahí no existe. Sin esto, el manejador
+  // reventaba antes de mirar la tecla y no funcionaba ni una.
+  if (escribiendo(target)) {
     if (event.key === 'Escape' && target.id === 'q') {
       target.value = '';
       setQuery('');
@@ -1085,6 +1148,10 @@ function onKeyDown(event) {
     }
     return;
   }
+  // Un deslizador con el foco se queda con sus flechas —moverlo es para lo que
+  // está—, pero no con todas las demás teclas.
+  const enMando = target?.matches?.('input[type="range"], select');
+  if (enMando && !event.ctrlKey && !event.metaKey && DEL_MANDO.has(event.key)) return;
 
   const mod = event.metaKey || event.ctrlKey;
   if (mod && event.key.toLowerCase() === 'a') {
@@ -1093,7 +1160,29 @@ function onKeyDown(event) {
     actions.selectionChanged();
     return;
   }
-  if (mod) return;
+  if (mod) {
+    // Los atajos del menú, atendidos también aquí.
+    //
+    // En Windows la barra de menú no se ve —la barra de título la dibuja la
+    // aplicación— y los aceleradores del menú son un sitio raro donde vivir:
+    // dependen de que el sistema los reparta. Atendiéndolos aquí funcionan
+    // siempre y en todos los sistemas, y el menú los sigue enseñando.
+    const orden = ATAJOS.get(event.altKey ? `alt+${event.key}` : event.key)
+      ?? ATAJOS.get(event.key.toLowerCase());
+    if (orden) {
+      event.preventDefault();
+      onCommand({ name: orden });
+    }
+    return;
+  }
+  if (!mod && event.altKey) {
+    const orden = ATAJOS.get(`alt+${event.key}`);
+    if (orden) {
+      event.preventDefault();
+      onCommand({ name: orden });
+    }
+    return;
+  }
   if (target?.closest?.('button') && (event.key === ' ' || event.key === 'Enter')) return;
 
   switch (event.key) {
@@ -1163,6 +1252,26 @@ function onKeyDown(event) {
     case '.':
       player.empujar(0.02);
       break;
+    // En la cabina, el plato preparado se mueve por compases sin tocar el
+    // ratón: es lo que se hace mientras se escucha, y con el ratón no se puede
+    // hacer y escuchar a la vez.
+    case '[':
+      if (state.view.type === 'mezclador') saltarCompasesEnB(-1);
+      break;
+    case ']':
+      if (state.view.type === 'mezclador') saltarCompasesEnB(1);
+      break;
+    case 'b':
+    case 'B': {
+      if (state.view.type !== 'mezclador') break;
+      const preparado = platoB();
+      if (!preparado) toast('No hay nada preparado en el plato B.');
+      else {
+        player.escucharPreparado(!preparado.escuchando);
+        renderStage();
+      }
+      break;
+    }
     case '/':
       event.preventDefault();
       $('#q').focus();
@@ -1463,6 +1572,15 @@ async function boot() {
     api.app.menu(rect.left, rect.bottom);
   });
   document.addEventListener('keydown', onKeyDown);
+  // Un botón pulsado con el ratón se queda con el foco, y a partir de ahí el
+  // espacio deja de ser «pausa» para ser «vuelve a pulsar ese botón». Se le
+  // quita el foco cuando el clic viene del ratón —`detail` lo dice— y se le
+  // deja cuando viene del teclado, que ahí sí hace falta.
+  document.addEventListener('click', (event) => {
+    if (!event.detail) return;
+    const boton = event.target?.closest?.('button');
+    if (boton && document.activeElement === boton) boton.blur();
+  });
   window.addEventListener('beforeunload', () => {
     if (state.currentId) persist({ last: { trackId: state.currentId, position: player.currentTime() } });
     persist({ view: state.view });

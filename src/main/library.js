@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isAudioPath, isIgnoredEntry } from '../shared/audio-files.js';
+import { REJILLA_VERSION } from '../shared/beats.js';
 import { readTags } from './metadata.js';
 import * as escritorPorDefecto from './tag-writer.js';
 
@@ -393,6 +394,9 @@ export function createLibrary({ store, covers, escritor = escritorPorDefecto, on
         offset: cero(rejilla.offset),
         tiempoFuerte: Math.min(7, Math.max(0, Math.round(Number(rejilla.tiempoFuerte) || 0))),
         fuerza: cero(rejilla.fuerza),
+        // Cuánto se va el tempo de punta a punta de la canción. Se guarda para
+        // poder avisar antes de pinchar y no después.
+        deriva: cero(rejilla.deriva),
         fuerzaCompas: cero(rejilla.fuerzaCompas),
         compasFuerte: Math.min(15, Math.max(0, Math.round(Number(rejilla.compasFuerte) || 0))),
         fuerzaFrase: cero(rejilla.fuerzaFrase),
@@ -411,6 +415,8 @@ export function createLibrary({ store, covers, escritor = escritorPorDefecto, on
       track.analisis = {
         bpmConfianza: Number(datos.bpmConfianza) || 0,
         keyConfianza: Number(datos.keyConfianza) || 0,
+        // Con qué versión se hizo: un análisis viejo cuenta como pendiente.
+        version: Math.max(1, Math.round(Number(datos.version) || 1)),
         en: Date.now(),
       };
       return track;
@@ -424,24 +430,70 @@ export function createLibrary({ store, covers, escritor = escritorPorDefecto, on
    * hay canciones cuyo primer golpe fuerte no es el que parece. Esto deja
    * moverlo desde la cabina sin volver a analizar nada.
    */
+  /**
+   * Corrige la rejilla a mano, sin volver a analizar.
+   *
+   * Dos cosas se corrigen: dónde cae el «uno» y a qué velocidad se cuenta. Lo
+   * segundo hace falta porque hay ritmos que se pueden contar al doble o a la
+   * mitad y las dos cuentas son ciertas —un drum & bass son 174 o son 87, según
+   * a quién le preguntes—, y ninguna máquina puede acertar siempre. Lo que sí
+   * puede es dejar que se le lleve la contraria en un clic.
+   */
   function ajustarRejilla(id, cambio = {}) {
     return store.update((d) => {
       const track = d.tracks[id];
       if (!track?.rejilla) return null;
+      const vieja = track.rejilla;
       const offset = Number(cambio.offset);
       const tiempoFuerte = Number(cambio.tiempoFuerte);
       const compasFuerte = Number(cambio.compasFuerte);
-      track.rejilla = {
-        ...track.rejilla,
-        offset: Number.isFinite(offset) ? Math.max(0, offset) : track.rejilla.offset,
+      const factor = Number(cambio.factor);
+
+      const nueva = {
+        ...vieja,
+        offset: Number.isFinite(offset) ? Math.max(0, offset) : vieja.offset,
         tiempoFuerte: Number.isFinite(tiempoFuerte)
           ? Math.min(7, Math.max(0, Math.round(tiempoFuerte)))
-          : track.rejilla.tiempoFuerte,
+          : vieja.tiempoFuerte,
         compasFuerte: Number.isFinite(compasFuerte)
           ? Math.min(15, Math.max(0, Math.round(compasFuerte)))
-          : track.rejilla.compasFuerte,
+          : vieja.compasFuerte,
         aMano: true,
+        // Una rejilla puesta a mano está al día por definición: la ha mirado
+        // una persona. Sin esto, la siguiente versión del análisis la daría por
+        // pendiente y borraría la corrección con su propia opinión.
+        version: Math.max(Number(vieja.version) || 1, REJILLA_VERSION),
       };
+
+      // Cambiar de octava no mueve ni un golpe de sitio: los golpes de antes
+      // siguen siendo golpes, solo que ahora se cuentan al doble o a la mitad.
+      // Por eso la rejilla nueva se ancla en el «uno» de la vieja, que es el
+      // instante que el usuario ya ha visto cuadrado en la onda.
+      if (Number.isFinite(factor) && factor > 0 && factor !== 1) {
+        const bpm = Math.round(nueva.bpm * factor * 1000) / 1000;
+        if (bpm >= 20 && bpm <= 400) {
+          const tiempos = nueva.tiemposPorCompas ?? 4;
+          const uno = nueva.offset + nueva.tiempoFuerte * (60 / nueva.bpm);
+          const periodo = 60 / bpm;
+          nueva.bpm = bpm;
+          nueva.offset = Math.round((((uno % periodo) + periodo) % periodo) * 1000) / 1000;
+          nueva.tiempoFuerte = 0;
+          // El compás dura otra cosa, así que la frase se recoloca para caer
+          // donde caía. Si no cuadra en un número entero de compases, se deja
+          // en el uno y que se corrija a mano, que para eso está el botón.
+          const frase = Math.round((nueva.compasFuerte ?? 0) * factor);
+          nueva.compasFuerte = Number.isFinite(frase)
+            ? ((frase % (nueva.compasesPorFrase ?? 4)) + (nueva.compasesPorFrase ?? 4))
+              % (nueva.compasesPorFrase ?? 4)
+            : 0;
+          nueva.tiemposPorCompas = tiempos;
+        }
+      }
+
+      track.rejilla = nueva;
+      // El tempo que enseña la biblioteca es el de la rejilla: si no, la ficha
+      // diría 87 y el plato iría a 174.
+      track.bpm = nueva.bpm;
       return track;
     });
   }

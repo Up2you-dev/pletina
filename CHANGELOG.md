@@ -4,6 +4,86 @@ Las versiones siguen [SemVer](https://semver.org/lang/es/). Cada una se
 construye desde la pestaña *Actions* del repositorio; una etiqueta `v1.2.3`
 además publica los instaladores sueltos en la página de versiones.
 
+## 4.1.0 — 2026-08-27
+
+Tres quejas, tres arreglos: las ondas no se veían, había teclas que no hacían
+nada y el análisis era mediocre cuadrando. Las tres tenían causa, y ninguna era
+la que parecía.
+
+### Cuadrar y analizar
+
+- **El tempo sale en su octava.** El detector se equivocaba a menudo del doble o
+  de la mitad —en una balada de bombo flojo decía 144 en vez de 72; en un garage
+  con el bombo al uno y al tres, 65 en vez de 130— y daba igual lo fino que se
+  afinase después: con la octava cambiada la mezcla no cuadra jamás y el número
+  que enseñaba la aplicación era sencillamente falso. Ahora se prueban el doble,
+  la mitad y los tercios de por medio, y gana la que más **contraste** saca:
+  cuánta más energía hay en los golpes que entre golpe y golpe. Una rejilla a la
+  mitad cae solo sobre golpes fuertes y saca buena media, pero el punto medio
+  entre sus golpes cae justo encima de los que se ha saltado, y ahí se delata.
+- **La octava se decide con el grupo entero y la fase con el bombo.** Cada cosa
+  con lo que sabe: en la banda grave, un ritmo de bombo al uno y al tres parece
+  ir a la mitad de velocidad de lo que va; y el bombo es el que marca el
+  instante exacto, que es lo que se oye cuando dos canciones no caen juntas.
+- **Ya no se pierde música por «poca confianza».** Antes, si el detector dudaba,
+  la canción se quedaba sin rejilla y sin poder mezclarse: el peor final. Ahora
+  quien decide si hay pulso es la rejilla, que mira la canción entera; un
+  hip-hop de bombo espaciado se analiza como cualquier otra cosa.
+- **Y la confianza dice la verdad.** Antes salía «1» hasta cuando el tempo
+  estaba al doble. Ahora es lo que destacan los golpes por lo bien que un solo
+  tempo explica la canción de punta a punta, y con eso la cabina avisa: «el
+  tempo se mueve · cuadra a ojo», «pulso flojo · repasa la rejilla». Una charla,
+  un ambiente o una grabación de campo se quedan sin rejilla, que es lo honesto:
+  una rejilla inventada cuadra el pinchazo con la nada.
+- **×2 y ÷2 en la cabina.** Hay ritmos que se pueden contar de las dos maneras y
+  las dos son ciertas —un drum & bass son 174 o son 87—, así que ninguna máquina
+  puede acertar siempre; lo que sí puede es dejar que se le lleve la contraria
+  en un clic. No vuelve a analizar nada ni mueve un golpe de sitio: ancla la
+  rejilla en el «uno» que ya está puesto y cambia la cuenta.
+- Una rejilla corregida a mano queda **al día**: la siguiente versión del
+  análisis no la pisa con su propia opinión.
+- Medido con música fabricada para la ocasión —bombo, caja, charles, bajo y pad,
+  con tempos no redondos y patrones de ocho estilos—: **ocho de ocho en la
+  octava buena** y menos de 20 ms de desfase medio, donde antes fallaban tres.
+
+### Las teclas
+
+- **Un mando con el foco ya no secuestra el teclado.** Movías el volumen o un
+  mando del ecualizador con el ratón, el foco se quedaba ahí y a partir de ese
+  momento no respondía ni el espacio. Cualquier `input` contaba como «estar
+  escribiendo»; ahora solo cuenta lo que se escribe de verdad. Las flechas de un
+  deslizador siguen siendo suyas, que para eso está.
+- **Un botón pulsado con el ratón devuelve el teclado a la aplicación**, en vez
+  de quedarse el espacio para volver a pulsarse solo.
+- **Los atajos con Ctrl los atiende también la ventana.** En Windows la barra de
+  menú no se ve y sus aceleradores dependen de que el sistema los reparta; ahora
+  funcionan siempre, y el menú suelta los suyos para que nada suene dos veces.
+- **Teclas de cabina**: `[` y `]` mueven el plato B un compás exacto y `B`
+  preescucha. Mientras se escucha no se puede estar con el ratón.
+- La ficha de atajos (`Ctrl + /`) lista todo esto, con su apartado de cabina.
+
+### Las ondas
+
+- **Un análisis de la versión anterior ya no cuenta como hecho.** Era la razón
+  de que no se vieran: la aplicación daba por analizada una biblioteca sin ondas
+  guardadas y no volvía a ofrecer el botón. Ahora vuelve a salir «Analizar N» y
+  con eso aparecen.
+- **Un hueco sin onda explica por qué**, escrito en el propio lienzo: «sin
+  analizar · pulsa Analizar», «sin onda guardada · vuelve a analizarla», «plato
+  vacío». Un rectángulo en blanco no dice nada.
+
+### Por dentro
+
+- `prueba-rejilla`, una quinta prueba de extremo a extremo que fabrica canciones
+  difíciles a propósito, las analiza con el analizador de verdad y comprueba la
+  octava, el desfase, la tinta de los cuatro lienzos y que cada tecla llega. Las
+  tres quejas de esta versión vivían en la unión entre piezas, que es donde no
+  miraba ninguna prueba unitaria.
+- Un estudio de grabación de mentira en `test/musica-falsa.js`: bombo, caja,
+  charles, bajo y pad, con swing y con tempo que se va. La caja de ritmos de
+  antes era demasiado fácil y por eso las pruebas pasaban mientras el análisis
+  fallaba.
+
 ## 4.0.0 — 2026-08-26
 
 El mezclador deja de ser una pantalla con dos fichas y pasa a ser una **cabina**:

@@ -563,8 +563,8 @@ describe('análisis y rejilla', () => {
 
   it('marca la versión de la rejilla, para saber cuáles hay que rehacer', () => {
     const id = library.listTracks()[0].id;
-    library.setAnalysis(id, { bpm: 128, rejilla: { ...rejilla, version: 2 } });
-    expect(library.listTracks()[0].rejilla.version).toBe(2);
+    library.setAnalysis(id, { bpm: 128, rejilla: { ...rejilla, version: 3 } });
+    expect(library.listTracks()[0].rejilla.version).toBe(3);
     // Las de antes no traían versión: cuentan como la 1.
     library.setAnalysis(id, { bpm: 128, rejilla });
     expect(library.listTracks()[0].rejilla.version).toBe(1);
@@ -583,6 +583,60 @@ describe('análisis y rejilla', () => {
     // Y el resto del análisis sigue donde estaba.
     expect(track.key).toBe('Am');
     expect(track.bpm).toBeCloseTo(127.312, 3);
+  });
+
+  it('el tempo se puede contar al doble sin mover un solo golpe de sitio', () => {
+    // Un drum & bass son 174 o son 87 según a quién le preguntes, y ninguna
+    // máquina acierta siempre. Lo que no puede pasar es que al llevarle la
+    // contraria se descoloquen los golpes: los de antes siguen siendo golpes.
+    const id = library.listTracks()[0].id;
+    library.setAnalysis(id, { bpm: 87, rejilla: { ...rejilla, bpm: 87, offset: 0.4, tiempoFuerte: 0 } });
+
+    library.ajustarRejilla(id, { factor: 2 });
+
+    const track = library.listTracks()[0];
+    expect(track.rejilla.bpm).toBeCloseTo(174, 3);
+    // El «uno» de antes —el segundo 0,4— sigue siendo un golpe de la rejilla.
+    const periodo = 60 / track.rejilla.bpm;
+    const resto = ((0.4 - track.rejilla.offset) % periodo + periodo) % periodo;
+    expect(Math.min(resto, periodo - resto)).toBeLessThan(0.001);
+    expect(track.rejilla.aMano).toBe(true);
+    // Y la ficha dice el tempo nuevo: si no, el plato iría al doble que el número.
+    expect(track.bpm).toBeCloseTo(174, 3);
+  });
+
+  it('y a la mitad, anclando en el uno que ya estaba puesto', () => {
+    const id = library.listTracks()[0].id;
+    library.setAnalysis(id, {
+      bpm: 130, rejilla: { ...rejilla, bpm: 130, offset: 0.2, tiempoFuerte: 1 },
+    });
+
+    library.ajustarRejilla(id, { factor: 0.5 });
+
+    const track = library.listTracks()[0];
+    expect(track.rejilla.bpm).toBeCloseTo(65, 3);
+    // El uno estaba en el segundo 0,2 + un tiempo: ahí sigue, y ahora es el
+    // primer tiempo del compás.
+    expect(track.rejilla.offset).toBeCloseTo(0.2 + 60 / 130, 3);
+    expect(track.rejilla.tiempoFuerte).toBe(0);
+  });
+
+  it('un factor absurdo no deja la canción sin tempo', () => {
+    const id = library.listTracks()[0].id;
+    library.setAnalysis(id, { bpm: 127.312, rejilla });
+    for (const factor of [0, -2, 100, Number.NaN, 'dos']) {
+      library.ajustarRejilla(id, { factor });
+      expect(library.listTracks()[0].rejilla.bpm).toBeCloseTo(127.312, 3);
+    }
+  });
+
+  it('una rejilla corregida a mano queda al día y no se pisa sola', () => {
+    // Quien corrige una rejilla a mano no quiere que la siguiente versión del
+    // análisis la dé por vieja y la sustituya por su propia opinión.
+    const id = library.listTracks()[0].id;
+    library.setAnalysis(id, { bpm: 130, rejilla: { ...rejilla, bpm: 130, version: 1 } });
+    library.ajustarRejilla(id, { offset: 0.25 });
+    expect(library.listTracks()[0].rejilla.version).toBeGreaterThanOrEqual(3);
   });
 
   it('mover el uno de una canción sin rejilla no hace nada', () => {

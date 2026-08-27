@@ -50,6 +50,25 @@ export function ajustarLienzo(canvas) {
   return { ctx, ancho, alto };
 }
 
+/**
+ * Un aviso en medio del lienzo.
+ *
+ * Un hueco vacío no dice nada: si una canción no tiene onda que dibujar, hay
+ * que decir por qué y qué hacer, ahí mismo y no en un menú.
+ */
+function escribirEnMedio(ctx, texto, { ancho, alto, paleta }) {
+  if (!texto) return;
+  ctx.fillStyle = paleta.agudo;
+  ctx.globalAlpha = 0.85;
+  ctx.font = '12px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(texto, ancho / 2, alto / 2);
+  ctx.textAlign = 'start';
+  ctx.textBaseline = 'alphabetic';
+  ctx.globalAlpha = 1;
+}
+
 /** Las tres bandas, una encima de otra: la grave detrás, la aguda delante. */
 function pintarBandas(ctx, columnas, {
   ancho, alto, paleta, ganancia = 1, apagada = null,
@@ -82,12 +101,15 @@ function pintarBandas(ctx, columnas, {
  * Vista general de la canción entera: para ver la estructura y saltar por ella.
  */
 export function pintarGeneral(canvas, ondas, {
-  posicion = 0, duracion = 0, zona = null, marcas = [], apagado = false,
+  posicion = 0, duracion = 0, zona = null, marcas = [], apagado = false, mensaje = '',
 } = {}) {
   const { ctx, ancho, alto } = ajustarLienzo(canvas);
   const paleta = colores(canvas);
   const largo = duracion || ondas?.duracion || 0;
-  if (!ondas || !largo) return;
+  if (!ondas || !largo) {
+    escribirEnMedio(ctx, mensaje, { ancho, alto, paleta });
+    return;
+  }
 
   const vista = { desde: 0, hasta: largo, ancho };
   const opciones = { ...vista, fps: ondas.fps };
@@ -132,12 +154,14 @@ export function pintarGeneral(canvas, ondas, {
  */
 export function pintarZoom(canvas, ondas, {
   centro = 0, segundos = 8, rejilla = null, marcas = [], apagado = false, sinGraves = false,
+  mensaje = '',
 } = {}) {
   const { ctx, ancho, alto } = ajustarLienzo(canvas);
   const paleta = colores(canvas);
   const { desde, hasta } = ventana(centro, segundos);
   const vista = { desde, hasta, ancho };
 
+  if (!ondas) escribirEnMedio(ctx, mensaje, { ancho, alto, paleta });
   if (ondas) {
     const opciones = { ...vista, fps: ondas.fps };
     ctx.globalAlpha = apagado ? 0.72 : 1;

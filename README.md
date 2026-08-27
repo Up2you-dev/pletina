@@ -58,7 +58,7 @@ npm run dist:win     # y esto te deja el instalador en release\
 Y para lo demás:
 
 ```bash
-npm run verify       # lint + 270 pruebas + arranque real, arrastre, mezcla y cadena
+npm run verify       # lint + 306 pruebas + arranque real, arrastre, mezcla, cadena y rejilla
 npm run dist:mac     # .dmg (arm64 + x64)  · hay que ejecutarlo EN un Mac
 npm run dist:linux   # AppImage + .deb
 ```
@@ -217,6 +217,26 @@ y una mezcla que empieza cuadrada y acaba de cualquier manera. La energía del
 bombo se mide con un filtro aplicado de ida y de vuelta, que no tiene desfase,
 en marcos de seis milisegundos.
 
+**Y en su octava.** Un detector de tempo se equivoca del doble o de la mitad con
+mucha facilidad —una balada de bombo flojo sale a 144 en vez de a 72; un garage
+con el bombo al uno y al tres, a 65 en vez de a 130— y con la octava cambiada da
+igual lo fino que se afine después: la mezcla no cuadra jamás. Así que se prueban
+el doble, la mitad y los tercios de por medio, y gana la que más **contraste**
+saca: cuánta más energía hay en los golpes que entre golpe y golpe. Es la medida
+que las distingue, porque una rejilla a la mitad cae solo sobre golpes fuertes
+—buena media— pero el punto medio entre sus golpes cae encima de los que se ha
+saltado, y ahí se delata. La octava se decide con el grupo entero y la fase con
+el bombo: cada cosa con lo que sabe.
+
+**La confianza dice la verdad.** No es «cuánta energía he encontrado» sino lo que
+destacan los golpes multiplicado por lo bien que un solo tempo explica la canción
+de punta a punta. Con eso, una charla o un ambiente se quedan **sin** rejilla
+—una rejilla inventada cuadra el pinchazo con la nada— y una grabación tocada a
+mano se analiza pero avisa: «el tempo se mueve · cuadra a ojo». Y cuando la
+máquina y tú no estéis de acuerdo, **×2 y ÷2** cambian la cuenta en un clic sin
+mover un solo golpe de sitio: hay ritmos que se pueden contar de las dos maneras
+y las dos son ciertas.
+
 **Cómo está partido.** El plan de una mezcla es una función pura —qué pasa y
 cuándo, como una lista de eventos con su instante, su parámetro y su rampa— en
 `shared/mezcla.js`; el análisis del bombo y la rejilla de compases, en
@@ -269,10 +289,20 @@ deja la aplicación como recién instalada; **la música no se toca nunca**.
 | G | ir a lo que está sonando |
 | M | mezclar ahora |
 | , · . | empujar el plato que suena |
+| [ · ] | en la cabina, un compás atrás · adelante en el plato B |
+| B | en la cabina, preescuchar el plato B |
 | / o `Cmd/Ctrl+F` | buscar |
+| `Cmd/Ctrl` + 1…6 | biblioteca, álbumes, artistas, favoritos, reciente, mezclador |
+| `Cmd/Ctrl+E` | ecualizador y mezcla |
+| `Cmd/Ctrl+U` · `Cmd/Ctrl+M` | cola · silenciar |
+| Alt + → ← | ±10 s |
 | Alt + ↑ ↓ | mover la canción dentro de una lista |
 | Mayús · Cmd/Ctrl + clic | seleccionar varias |
 | Supr | quitar lo seleccionado |
+
+Los atajos con `Ctrl` los atiende la ventana además del menú: en Windows la
+barra de menú no se ve y sus aceleradores dependen de que el sistema los
+reparta. La ficha completa está en `Cmd/Ctrl + /`.
 
 Las teclas de medios del teclado (⏯ ⏭ ⏮) funcionan aunque la ventana no esté en
 primer plano. En macOS el sistema puede pedir permiso de accesibilidad para
@@ -299,7 +329,7 @@ y los empaqueta en `.ico` y `.icns`).
 
 ## Pruebas
 
-- `npm test` — 270 pruebas sobre la lógica pura (cola, orden y búsqueda,
+- `npm test` — 306 pruebas sobre la lógica pura (cola, orden y búsqueda,
   formato, `Range`), sobre el almacén y la biblioteca contra archivos de verdad
   en carpetas temporales —análisis incremental, ausencias, discos desconectados,
   correcciones de etiquetas, listas y M3U de ida y vuelta— y de contrato entre
@@ -332,8 +362,17 @@ y los empaqueta en `.ico` y `.icns`).
   que la anterior: los dos errores más gordos del mezclador —el tempo que no
   llegaba al plato y los graves que no volvían— no los puede ver ninguna prueba
   unitaria.
+- `npm run test:rejilla` — las tres cosas que un usuario nota y ninguna prueba
+  unitaria ve. Fabrica canciones difíciles a propósito —con el bombo solo en el
+  uno y en el tres, que es donde un detector dice la mitad del tempo—, las
+  analiza con el analizador de verdad y comprueba que el tempo sale en su
+  octava, que los golpes de la rejilla caen encima del bombo con error de
+  milisegundos, que el ×2 no mueve un golpe de sitio, que los cuatro lienzos
+  tienen tinta de tres colores, que un plato vacío explica por qué lo está y que
+  cada atajo de teclado llega a donde tiene que llegar —incluso con el foco en
+  un deslizador, que era justo donde se perdían.
 
-En Linux sin escritorio, las cuatro últimas usan `xvfb-run` automáticamente.
+En Linux sin escritorio, las cinco últimas usan `xvfb-run` automáticamente.
 
 ## Límites conocidos
 
@@ -347,7 +386,9 @@ En Linux sin escritorio, las cuatro últimas usan `xvfb-run` automáticamente.
   mezclar, donde se mueve un 2 o 3 %, es transparente.
 - El análisis de tempo acierta bien con música de pulso marcado y falla más con
   música libre o en vivo; por eso guarda su nivel de confianza y no se inventa un
-  número cuando no lo tiene claro.
+  número cuando no lo tiene claro. Y en los ritmos que se pueden contar de dos
+  maneras —un drum & bass son 174 o son 87— elige la lectura más habitual, que a
+  veces no es la tuya: para eso están el ×2 y el ÷2 de la cabina.
 - La rejilla supone un tempo constante en toda la canción. Con música tocada a
   mano —o con un final que se va frenando— cuadra al principio y se separa al
   final; con música de caja de ritmos, clava.

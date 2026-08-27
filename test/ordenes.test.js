@@ -47,6 +47,51 @@ describe('órdenes entre el menú y la interfaz', () => {
     expect(interfaz).toMatch(/case 'sleep:set': programarTemporizador\(payload\?\.minutos/);
   });
 
+  it('los atajos del menú y los de la ventana dicen lo mismo y no suenan dos veces', async () => {
+    // En Windows el menú va oculto: si sus atajos fueran los únicos, Ctrl+P no
+    // haría nada. Por eso los escucha también la ventana. Y por eso el menú
+    // tiene que soltarlos: registrados en los dos sitios, una pulsación llega
+    // dos veces y la canción se para y arranca en el mismo golpe.
+    const [menu, interfaz] = await Promise.all([
+      leer('src/main/menu.js'),
+      leer('src/renderer/app.js'),
+    ]);
+
+    // Del menú: qué orden manda cada atajo y cuáles están sueltos.
+    const delMenu = new Map([...menu.matchAll(
+      /accelerator: '([^']+)'[^\n]*?command\('([a-z]+:[a-zA-Z]+)'/g,
+    )].map((m) => [m[1], m[2]]));
+    const lista = menu.match(/ATAJOS_DEL_RENDERIZADOR = new Set\(\[([\s\S]*?)\]\);/)?.[1] ?? '';
+    const sueltos = new Set([...lista.matchAll(/'([^']+)'/g)].map((m) => m[1]));
+
+    // De la ventana: la tabla de atajos, traducida a como los escribe Electron.
+    const comoElectron = (tecla) => {
+      const alt = tecla.startsWith('alt+');
+      const suelta = alt ? tecla.slice(4) : tecla;
+      const nombre = suelta.replace(/^Arrow/, '');
+      return `${alt ? 'Alt' : 'CmdOrCtrl'}+${nombre.length === 1 ? nombre.toUpperCase() : nombre}`;
+    };
+    const deLaVentana = new Map([...interfaz.matchAll(
+      /\['([^']+)', '([a-z]+:[a-zA-Z]+)'\]/g,
+    )].map((m) => [comoElectron(m[1]), m[2]]));
+
+    expect(deLaVentana.size).toBeGreaterThan(15);
+    for (const [atajo, orden] of deLaVentana) {
+      if (!delMenu.has(atajo)) continue;
+      expect([atajo, delMenu.get(atajo)]).toEqual([atajo, orden]);
+      expect([atajo, sueltos.has(atajo)]).toEqual([atajo, true]);
+    }
+    // Y que el menú no suelte atajos que nadie más escucha: quedarían muertos.
+    for (const atajo of sueltos) expect([atajo, deLaVentana.has(atajo)]).toEqual([atajo, true]);
+  });
+
+  it('todas las órdenes de la tabla de atajos tienen quien las atienda', async () => {
+    const interfaz = await leer('src/renderer/app.js');
+    const tabla = [...interfaz.matchAll(/\['[^']+', '([a-z]+:[a-zA-Z]+)'\]/g)].map((m) => m[1]);
+    const manejadas = new Set(atendidas(interfaz));
+    expect(tabla.filter((orden) => !manejadas.has(orden))).toEqual([]);
+  });
+
   it('cada canal que expone el preload existe en el proceso principal', async () => {
     const [preload, principal] = await Promise.all([
       leer('src/preload/preload.mjs'),

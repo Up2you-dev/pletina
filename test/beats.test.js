@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ANALISIS_VERSION,
+  REJILLA_VERSION,
   ajustarRejilla,
   analizada,
   detectarCompas,
@@ -300,14 +302,26 @@ describe('primerSonido', () => {
 });
 
 describe('analizada', () => {
-  const rejilla = { bpm: 128, offset: 0.1, version: 2 };
+  const rejilla = { bpm: 128, offset: 0.1, version: REJILLA_VERSION };
+  const hoy = { en: 1712345678, version: ANALISIS_VERSION };
 
-  it('con rejilla al día, sí', () => {
-    expect(analizada({ rejilla, analisis: { en: 1 } })).toBe(true);
+  it('con rejilla al día y con onda, sí', () => {
+    expect(analizada({ rejilla, onda: true, analisis: hoy })).toBe(true);
+  });
+
+  it('analizada con una versión anterior, no: le falta algo', () => {
+    // Es lo que le pasa a quien actualiza: tiene rejilla, pero no tiene onda, y
+    // sin esto la aplicación diría que ya está y no habría manera de saberlo.
+    expect(analizada({ rejilla, analisis: { en: 1, version: ANALISIS_VERSION - 1 } })).toBe(false);
+    expect(analizada({ rejilla, analisis: { en: 1 } })).toBe(false);
+  });
+
+  it('con rejilla al día pero sin onda, tampoco', () => {
+    expect(analizada({ rejilla, onda: false, analisis: hoy })).toBe(false);
   });
 
   it('con una rejilla vieja, no: hay que rehacerla', () => {
-    expect(analizada({ rejilla: { bpm: 128, offset: 0.1 }, analisis: { en: 1 } })).toBe(false);
+    expect(analizada({ rejilla: { bpm: 128, offset: 0.1 }, onda: true, analisis: hoy })).toBe(false);
   });
 
   it('sin analizar, no', () => {
@@ -317,7 +331,10 @@ describe('analizada', () => {
 
   it('intentada y sin pulso, sí: no se repite en cada lote', () => {
     // Una charla o un minuto de ruido no tienen tempo, y volver a mirarlo cada
-    // vez cuesta segundos por canción para nada.
-    expect(analizada({ bpm: 0, rejilla: null, analisis: { en: 1712345678 } })).toBe(true);
+    // vez cuesta segundos por canción para nada. Onda sí tiene: eso se dibuja
+    // igual.
+    expect(analizada({
+      bpm: 0, rejilla: null, onda: true, analisis: hoy,
+    })).toBe(true);
   });
 });

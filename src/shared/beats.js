@@ -22,14 +22,24 @@ export const GRAVE_MAX = 150;
 export const SALTO = 64;
 
 /**
- * Versión de la rejilla.
+ * Versión del análisis.
  *
- * Las rejillas de la versión 1 salían de un tempo estimado y de una envolvente
- * que adelantaba los golpes: valen para saber el tempo aproximado, no para
- * pinchar. Se marcan como no analizadas para que la aplicación ofrezca
- * rehacerlas en vez de mezclar con datos que no cuadran.
+ * Sube cuando lo que sabe la aplicación de una canción cambia de forma, y sirve
+ * para una sola cosa: que un análisis viejo cuente como pendiente en vez de
+ * como hecho. Sin esto, quien actualiza se queda con datos de la versión
+ * anterior y sin manera de saber por qué le falta algo.
+ *
+ *   1 · tempo estimado y envolvente que adelantaba los golpes: no vale para
+ *       pinchar, solo para saber el tempo aproximado.
+ *   2 · rejilla ajustada de verdad (tempo y fase a la vez).
+ *   3 · además, la forma de onda guardada para poder dibujarla.
+ *   4 · octava resuelta —el doble y la mitad ya no se cuelan— y confianza que
+ *       dice la verdad. Las rejillas de la 3 pueden ir al doble o a la mitad
+ *       del tempo que suena y no hay manera de saber cuáles: se rehacen.
  */
-export const REJILLA_VERSION = 2;
+export const ANALISIS_VERSION = 4;
+/** La rejilla es utilizable desde la versión 3, que es la que resuelve octavas. */
+export const REJILLA_VERSION = 3;
 
 /** ¿Esta rejilla sirve para mezclar? */
 export const rejillaVigente = (rejilla) => Boolean(
@@ -37,16 +47,19 @@ export const rejillaVigente = (rejilla) => Boolean(
 );
 
 /**
- * ¿Esta canción ya está analizada?
+ * ¿Esta canción está analizada con lo que hace falta HOY?
  *
- * Con rejilla al día, evidentemente. Y también cuando se intentó y no salió:
- * hay música sin pulso que agarrar —una charla, un ambiente, un minuto de
- * ruido—, y volver a intentarlo en cada lote es tiempo tirado. Forzando el
- * análisis se repite igualmente.
+ * Con rejilla al día y con onda dibujable. Y también cuando se intentó y no
+ * salió: hay música sin pulso que agarrar —una charla, un ambiente, un minuto
+ * de ruido—, y volver a intentarlo en cada lote es tiempo tirado; en ese caso
+ * basta con que el intento sea de esta versión.
  */
 export function analizada(track) {
-  if (rejillaVigente(track?.rejilla)) return true;
-  return Boolean(track?.analisis?.en) && !track?.rejilla;
+  if (!track?.analisis?.en) return false;
+  if (Number(track.analisis.version || 1) < ANALISIS_VERSION) return false;
+  if (rejillaVigente(track.rejilla)) return Boolean(track.onda);
+  // Se intentó y no había pulso: eso no se repite, pero sí tiene que tener onda.
+  return !track.rejilla && Boolean(track.onda);
 }
 
 /* ---------------------------------------------------------- envolventes */
@@ -135,19 +148,51 @@ export function envolventes(muestras, tasa, { salto = SALTO, corte = GRAVE_MAX }
 
 /* -------------------------------------------------------------- rejilla */
 
-/** Cuánta energía cae encima de la rejilla (tempo, fase). Interpola entre marcos. */
+/** Lee la envolvente en un marco fraccionario, interpolando entre vecinos. */
+function leer(envolvente, marco) {
+  if (marco < 0 || marco >= envolvente.length - 1) return 0;
+  const i = Math.floor(marco);
+  const f = marco - i;
+  return envolvente[i] * (1 - f) + envolvente[i + 1] * f;
+}
+
+/** Cuánta energía cae encima de la rejilla (tempo, fase). */
 function puntuar(envolvente, periodo, fase) {
   let suma = 0;
   let golpes = 0;
   const limite = envolvente.length - 1;
   for (let marco = fase; marco < limite; marco += periodo) {
     if (marco < 0) continue;
-    const i = Math.floor(marco);
-    const f = marco - i;
-    suma += envolvente[i] * (1 - f) + envolvente[i + 1] * f;
+    suma += leer(envolvente, marco);
     golpes += 1;
   }
   return golpes ? suma / golpes : 0;
+}
+
+/**
+ * Contraste: cuánta más energía hay en los golpes que entre golpe y golpe.
+ *
+ * Es lo que distingue el tempo bueno del doble y de la mitad, y la media de
+ * energía por golpe no lo distingue: una rejilla a la mitad cae solo sobre los
+ * golpes fuertes y saca mejor media que la buena. Pero a la mitad, el punto
+ * medio entre sus golpes cae justo encima de los golpes que se ha saltado, y
+ * ahí su contraste se desploma. Al doble pasa al revés: acierta los golpes de
+ * verdad y también los huecos, y se queda a medias. Solo el tempo bueno tiene
+ * los golpes llenos y los huecos vacíos.
+ */
+export function contraste(envolvente, periodo, fase) {
+  let dentro = 0;
+  let fuera = 0;
+  let n = 0;
+  const mitad = periodo / 2;
+  const limite = envolvente.length - 1 - mitad;
+  for (let marco = fase; marco < limite; marco += periodo) {
+    if (marco < 0) continue;
+    dentro += leer(envolvente, marco);
+    fuera += leer(envolvente, marco + mitad);
+    n += 1;
+  }
+  return n ? (dentro - fuera) / n : 0;
 }
 
 const rango = (centro, radio, pasos) => Array.from(
@@ -156,24 +201,17 @@ const rango = (centro, radio, pasos) => Array.from(
 );
 
 /**
- * Ajusta tempo y fase a la vez.
+ * Busca el par (tempo, fase) que mejor explica los golpes, en marcos.
  *
- * El detector de tempo da un número aproximado —con la resolución de su
- * autocorrelación—; aquí se afina buscando el par que hace que TODOS los golpes
- * de la canción caigan sobre la rejilla. Dos pasadas: una amplia y otra fina
- * alrededor de la ganadora.
- *
- * `desde` es el segundo de la canción al que corresponde el primer marco, para
- * poder ajustar sobre un tramo central y devolver tiempos de la canción entera.
+ * Dos pasadas: una amplia y otra fina alrededor de la ganadora. Devuelve la
+ * fase en marcos porque quien llama todavía tiene que medir cosas sobre ella;
+ * `ajustarRejilla` es quien la pasa a segundos de canción.
  */
-export function ajustarRejilla(envolvente, tasaEnvolvente, bpmAprox, {
-  margen = 0.04, desde = 0, pasosBpm = 121, pasosFase = 64, afinado = 256,
+function fijar(envolvente, tasaEnvolvente, bpmAprox, {
+  margen = 0.04, pasosBpm = 121, pasosFase = 64, afinado = 256,
 } = {}) {
-  const vacia = { bpm: bpmAprox || 0, offset: 0, fuerza: 0 };
-  if (!envolvente?.length || !bpmAprox || !tasaEnvolvente) return vacia;
-
   const periodoDe = (bpm) => (60 / bpm) * tasaEnvolvente;
-  if (!Number.isFinite(periodoDe(bpmAprox)) || periodoDe(bpmAprox) < 4) return vacia;
+  if (!Number.isFinite(periodoDe(bpmAprox)) || periodoDe(bpmAprox) < 4) return null;
 
   let mejor = { bpm: bpmAprox, fase: 0, puntuacion: -1 };
   let suma = 0;
@@ -199,15 +237,167 @@ export function ajustarRejilla(envolvente, tasaEnvolvente, bpmAprox, {
   const paso = (2 * radio) / (pasosBpm - 1);
   barrer(rango(mejor.bpm, paso, 41), afinado);
 
-  const media = cuenta ? suma / cuenta : 0;
+  return { ...mejor, media: cuenta ? suma / cuenta : 0 };
+}
+
+/**
+ * Nivel de referencia de una envolvente: el percentil alto, no la media.
+ *
+ * Entre golpe y golpe hay silencio, y con silencio de por medio la media dice
+ * más de cuánto calla la canción que de cuánto pega. El percentil mide lo que
+ * pega un golpe, que es contra lo que hay que comparar el contraste.
+ */
+function nivelTipico(envolvente, percentil = 0.98) {
+  if (!envolvente?.length) return 0;
+  const ordenada = Float32Array.from(envolvente).sort();
+  return ordenada[Math.min(ordenada.length - 1, Math.floor(ordenada.length * percentil))];
+}
+
+/**
+ * Ajusta tempo y fase a la vez, alrededor de un tempo aproximado.
+ *
+ * El detector de tempo da un número con la resolución de su autocorrelación;
+ * aquí se afina buscando el par que hace que TODOS los golpes de la canción
+ * caigan sobre la rejilla. De ahí sale que la rejilla valga en el minuto uno y
+ * en el minuto seis.
+ *
+ * `desde` es el segundo de la canción al que corresponde el primer marco, para
+ * poder ajustar sobre un tramo central y devolver tiempos de la canción entera.
+ *
+ * La `fuerza` que devuelve no es «cuánta energía he encontrado» sino cuánto
+ * destacan los golpes de lo que hay entre ellos, medido contra lo que pega un
+ * golpe de esta canción. Así un cero significa «esta rejilla no la creas», y no
+ * «esta canción suena flojito».
+ */
+export function ajustarRejilla(envolvente, tasaEnvolvente, bpmAprox, {
+  margen = 0.04, desde = 0, pasosBpm = 121, pasosFase = 64, afinado = 256,
+} = {}) {
+  const vacia = { bpm: bpmAprox || 0, offset: 0, fuerza: 0 };
+  if (!envolvente?.length || !bpmAprox || !tasaEnvolvente) return vacia;
+
+  const mejor = fijar(envolvente, tasaEnvolvente, bpmAprox, {
+    margen, pasosBpm, pasosFase, afinado,
+  });
+  if (!mejor) return vacia;
+
   const periodoSegundos = 60 / mejor.bpm;
   const crudo = desde + mejor.fase / tasaEnvolvente;
   const offset = ((crudo % periodoSegundos) + periodoSegundos) % periodoSegundos;
+  const nivel = nivelTipico(envolvente);
+  const separacion = contraste(envolvente, (60 / mejor.bpm) * tasaEnvolvente, mejor.fase);
   return {
     bpm: Math.round(mejor.bpm * 1000) / 1000,
     offset: Math.round(offset * 1000) / 1000,
-    fuerza: media > 0 ? Math.round(Math.min(1, (mejor.puntuacion / media - 1) / 2) * 100) / 100 : 0,
+    fuerza: nivel > 0 ? Math.round(Math.max(0, Math.min(1, separacion / nivel)) * 100) / 100 : 0,
   };
+}
+
+/**
+ * Por debajo de esto no hay rejilla que valga.
+ *
+ * El contraste va de cero a uno: cero es «los golpes no destacan de lo que hay
+ * entre ellos», o sea que no hay golpes. Una rejilla así no es una rejilla
+ * floja, es una rejilla falsa, y vale más decir que la canción no tiene pulso.
+ */
+export const FUERZA_MINIMA = 0.08;
+
+/** Las octavas que se prueban: el doble, la mitad y los tercios de por medio. */
+export const MULTIPLOS = [1 / 3, 1 / 2, 2 / 3, 1, 3 / 2, 2, 3];
+
+/** Fuera de aquí no hay música que pinchar: hay un error de octava. */
+export const BPM_MIN = 58;
+export const BPM_MAX = 200;
+
+/**
+ * Con qué tempo llama la gente al mismo ritmo.
+ *
+ * Un ritmo se puede contar al doble o a la mitad y las dos cuentas son
+ * ciertas; lo que decide es la costumbre, y la costumbre vive alrededor de las
+ * ciento veinte. Es un empujón suave a propósito: rompe empates, no manda
+ * sobre lo que dice la música. Un drum & bass a 174 gana por contraste aunque
+ * 87 le venga mejor a esta curva.
+ */
+const preferencia = (bpm) => Math.exp(-0.5 * ((Math.log2(bpm / 120) / 1.4) ** 2));
+
+/**
+ * La rejilla probando también el doble, la mitad y los tercios.
+ *
+ * El detector de tempo se equivoca de octava a menudo —en un drum & bass dice
+ * la mitad, en una balada con el bombo flojo dice el doble— y da igual lo fino
+ * que se ajuste después: con la octava cambiada la mezcla no cuadra jamás, y
+ * el número que enseña la aplicación es sencillamente falso. Así que se prueban
+ * las octavas de alrededor con un ajuste barato, gana la que más contraste
+ * saca, y solo a esa se le hace el ajuste fino.
+ */
+export function elegirTempo(envolvente, tasaEnvolvente, bpmAprox) {
+  if (!envolvente?.length || !bpmAprox || !tasaEnvolvente) return { bpm: 0, contraste: 0 };
+  let campeon = null;
+  for (const multiplo of MULTIPLOS) {
+    const bpm = bpmAprox * multiplo;
+    if (bpm < BPM_MIN || bpm > BPM_MAX) continue;
+    const tanteo = fijar(envolvente, tasaEnvolvente, bpm, {
+      margen: 0.05, pasosBpm: 21, pasosFase: 48, afinado: 96,
+    });
+    if (!tanteo) continue;
+    const separacion = contraste(envolvente, (60 / tanteo.bpm) * tasaEnvolvente, tanteo.fase);
+    const valor = separacion * preferencia(tanteo.bpm);
+    if (!campeon || valor > campeon.valor) {
+      campeon = { bpm: tanteo.bpm, contraste: separacion, valor };
+    }
+  }
+  return campeon ? { bpm: campeon.bpm, contraste: campeon.contraste } : { bpm: 0, contraste: 0 };
+}
+
+/**
+ * La rejilla entera: octava, tempo fino y fase.
+ *
+ * `octavas` es la envolvente con la que se decide la octava, que no tiene por
+ * qué ser la misma con la que se afina. Y no lo es casi nunca: la octava se
+ * decide con el grupo entero —bombo, caja y charles— porque en la banda del
+ * bombo un ritmo de bombo al uno y al tres parece ir a la mitad de velocidad
+ * de lo que va; y la fase se afina con el bombo, porque es el golpe que marca
+ * el instante exacto y el que se oye cuando dos canciones no cuadran.
+ */
+export function elegirRejilla(envolvente, tasaEnvolvente, bpmAprox, {
+  desde = 0, octavas = null,
+} = {}) {
+  const vacia = { bpm: 0, offset: 0, fuerza: 0 };
+  if (!envolvente?.length || !bpmAprox || !tasaEnvolvente) return vacia;
+  const { bpm } = elegirTempo(octavas ?? envolvente, tasaEnvolvente, bpmAprox);
+  if (!bpm) return vacia;
+  // Margen corto: la octava ya está decidida y aquí solo se afina.
+  return ajustarRejilla(envolvente, tasaEnvolvente, bpm, { desde, margen: 0.02 });
+}
+
+/**
+ * Cuánto se va el tempo a lo largo de la canción.
+ *
+ * Una grabación tocada a mano no tiene un tempo, tiene un tempo por minuto. Una
+ * sola rejilla no puede cuadrar entera una canción así, y callárselo es peor
+ * que no analizarla: el pinchazo entra bien y a los treinta segundos se ha ido.
+ * Se ajusta el primer tercio y el último por separado y se mira la diferencia.
+ */
+/**
+ * Cuánto se puede fiar uno de una rejilla que se va.
+ *
+ * Un tempo que se mueve medio punto es una grabación humana y se aguanta; uno
+ * que se mueve tres puntos no es un tempo, es que ahí no había pulso y el
+ * ajuste se ha agarrado a lo que ha podido. Esto es lo que separa una canción
+ * floja de una charla: el ruido también saca contraste, pero no saca el mismo
+ * tempo en el primer tercio que en el último.
+ */
+export const firmeza = (deriva) => Math.max(0, Math.min(1, 1 - Math.max(0, deriva - 0.4) / 2.6));
+
+export function medirDeriva(envolvente, tasaEnvolvente, bpm) {
+  if (!envolvente?.length || !bpm) return 0;
+  const tercio = Math.floor(envolvente.length / 3);
+  if (tercio * tasaEnvolvente <= 0 || tercio < tasaEnvolvente * 8) return 0;
+  const cabo = (trozo) => fijar(trozo, tasaEnvolvente, bpm, {
+    margen: 0.06, pasosBpm: 61, pasosFase: 32, afinado: 64,
+  })?.bpm ?? bpm;
+  const principio = cabo(envolvente.subarray(0, tercio));
+  const final = cabo(envolvente.subarray(envolvente.length - tercio));
+  return Math.round(Math.abs(final - principio) * 1000) / 1000;
 }
 
 /**
@@ -336,7 +526,8 @@ export function rejillaCompleta(muestras, tasa, bpmAprox, { desde = 0, tiemposPo
   const porBombo = fuerzaGrave > fuerzaTotal * 0.08;
   const elegida = porBombo ? grave : total;
 
-  const rejilla = ajustarRejilla(elegida, tasaEnv, bpmAprox, { desde });
+  const rejilla = elegirRejilla(elegida, tasaEnv, bpmAprox, { desde, octavas: total });
+  const deriva = medirDeriva(elegida, tasaEnv, rejilla.bpm);
   const compas = detectarCompas(elegida, tasaEnv, rejilla, { desde, tiemposPorCompas });
   const frase = detectarFrase(energia, tasaEnv, { ...rejilla, tiempoFuerte: compas.tiempoFuerte }, {
     desde, tiemposPorCompas,
@@ -345,7 +536,12 @@ export function rejillaCompleta(muestras, tasa, bpmAprox, { desde = 0, tiemposPo
   return {
     bpm: rejilla.bpm,
     offset: rejilla.offset,
-    fuerza: rejilla.fuerza,
+    // La confianza es lo que destacan los golpes por lo bien que un solo tempo
+    // explica la canción entera. Las dos cosas a la vez, porque cada una sola
+    // se deja engañar: el ruido saca contraste, y un tempo estable sin golpes
+    // no es un tempo.
+    fuerza: Math.round(rejilla.fuerza * firmeza(deriva) * 100) / 100,
+    deriva,
     tiempoFuerte: compas.tiempoFuerte,
     fuerzaCompas: compas.fuerza,
     compasFuerte: frase.compasFuerte,
