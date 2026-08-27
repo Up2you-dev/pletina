@@ -66,6 +66,10 @@ la que parecía.
   momento no respondía ni el espacio. Cualquier `input` contaba como «estar
   escribiendo»; ahora solo cuenta lo que se escribe de verdad. Las flechas de un
   deslizador siguen siendo suyas, que para eso está.
+- **Pero un mando con el foco se queda con lo suyo**: las flechas de un
+  deslizador lo mueven y el espacio marca una casilla. Es lo único con lo que se
+  puede usar la aplicación sin ratón, y quitárselo para ganar un atajo global
+  sería cambiar un teclado que funciona por otro.
 - **Un botón pulsado con el ratón devuelve el teclado a la aplicación**, en vez
   de quedarse el espacio para volver a pulsarse solo.
 - **Los atajos con Ctrl los atiende también la ventana.** En Windows la barra de
@@ -89,7 +93,9 @@ la que parecía.
 
 - `prueba-rejilla`, una quinta prueba de extremo a extremo que fabrica canciones
   difíciles a propósito, las analiza con el analizador de verdad y comprueba la
-  octava, el desfase, la tinta de los cuatro lienzos y que cada tecla llega. Las
+  octava, el desfase, la tinta de los cuatro lienzos y que cada tecla llega —al
+  elemento que tiene el foco, que es a donde el navegador manda una tecla de
+  verdad; mandarla al documento sería probar otra cosa—. Las
   tres quejas de esta versión vivían en la unión entre piezas, que es donde no
   miraba ninguna prueba unitaria.
 - Un estudio de grabación de mentira en `test/musica-falsa.js`: bombo, caja,

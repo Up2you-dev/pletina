@@ -1134,8 +1134,15 @@ function escribiendo(elemento) {
   return !['range', 'checkbox', 'radio', 'button', 'submit', 'reset', 'color'].includes(elemento.type);
 }
 
-/** Teclas que un mando con el foco usa para lo suyo: ahí manda el navegador. */
+/**
+ * Teclas que un mando con el foco usa para lo suyo: ahí manda el navegador.
+ *
+ * Las flechas de un deslizador lo mueven y el espacio marca una casilla, y eso
+ * es lo único con lo que se puede usar la aplicación sin ratón. Quitárselo para
+ * ganar un atajo global sería cambiar un teclado que funciona por otro.
+ */
 const DEL_MANDO = new Set([' ', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End']);
+const MANDOS = 'input[type="range"], input[type="checkbox"], input[type="radio"], select';
 
 function onKeyDown(event) {
   if (isDialogOpen()) return;
@@ -1149,9 +1156,9 @@ function onKeyDown(event) {
     }
     return;
   }
-  // Un deslizador con el foco se queda con sus flechas —moverlo es para lo que
-  // está—, pero no con todas las demás teclas.
-  const enMando = target?.matches?.('input[type="range"], select');
+  // Un mando con el foco se queda con sus teclas —moverlo es para lo que está—,
+  // pero no con todas las demás.
+  const enMando = target?.matches?.(MANDOS);
   if (enMando && !event.ctrlKey && !event.metaKey && DEL_MANDO.has(event.key)) return;
 
   const mod = event.metaKey || event.ctrlKey;

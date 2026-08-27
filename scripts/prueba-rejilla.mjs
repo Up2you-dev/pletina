@@ -307,7 +307,9 @@ comprobar('un plato vacío no se queda mudo', vacio > 0 && vacio < 5, `${vacio} 
 console.log('las teclas:');
 const pulsar = async (key, mods = {}) => {
   await evaluar(`(() => {
-    document.body.dispatchEvent(new KeyboardEvent('keydown', {
+    // Al elemento que tiene el foco, que es a donde el navegador manda una
+    // tecla de verdad. Mandarla al documento sería probar otra cosa.
+    (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent('keydown', {
       key: ${JSON.stringify(key)}, ctrlKey: ${Boolean(mods.ctrl)}, altKey: ${Boolean(mods.alt)},
       bubbles: true, cancelable: true,
     }));
@@ -368,14 +370,35 @@ await pulsar('u', { ctrl: true });
 // Pero sus flechas siguen siendo suyas: para eso está.
 const posicion = () => evaluar(`document.querySelector('input[type="range"]').value`);
 const valorAntes = await posicion();
-await evaluar(`(() => {
+const flecha = await evaluar(`(() => {
   const mando = document.querySelector('input[type="range"]');
   mando.focus();
-  mando.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
-  return true;
+  const evento = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true });
+  mando.dispatchEvent(evento);
+  return evento.defaultPrevented;
 })()`);
-comprobar('y sus flechas siguen siendo suyas', (await posicion()) === valorAntes,
-  `el deslizador no se ha movido solo (${valorAntes})`);
+comprobar('y sus flechas siguen siendo suyas', flecha === false && (await posicion()) === valorAntes,
+  flecha ? 'la aplicación se las queda' : `llegan al deslizador (${valorAntes})`);
+await evaluar(`document.activeElement.blur()`);
+
+// Una casilla con el foco se queda con su espacio: marcarla es lo único que se
+// puede hacer sin ratón, y perderlo para ganar un atajo sería mal negocio. Aquí
+// se mira que la aplicación no lo intercepte —una tecla fabricada no dispara el
+// comportamiento del navegador, así que marcarla de verdad no se puede probar
+// desde aquí, pero estorbarla sí—, y de paso que no le pase la música.
+const antesDeLaCasilla = await sonando();
+const casilla = await evaluar(`(() => {
+  const c = document.querySelector('input[type="checkbox"]');
+  if (!c) return null;
+  c.focus();
+  const evento = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+  c.dispatchEvent(evento);
+  return { interceptada: evento.defaultPrevented };
+})()`);
+await sleep(320);
+comprobar('el espacio de una casilla con el foco es suyo, no de la música',
+  casilla?.interceptada === false && (await sonando()) === antesDeLaCasilla,
+  casilla?.interceptada ? 'la aplicación se lo queda' : 'llega a la casilla');
 await evaluar(`document.activeElement.blur()`);
 
 // Y un botón pulsado con el ratón devuelve el teclado a la aplicación.
