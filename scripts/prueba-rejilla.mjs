@@ -296,6 +296,20 @@ const colores = await evaluar(`(() => {
 })()`);
 comprobar('con las tres bandas de distinto color', colores >= 3, `${colores} colores`);
 
+// Y el ×2 de la cabina, pulsándolo como se pulsa: el botón tiene que estar
+// vivo, la orden llegar y el número cambiar en la ficha del plato.
+const bpmDeB = () => evaluar(`(async () => (await import('./mezclador.js')).platoB()?.ficha?.bpm ?? 0)()`);
+const antesDelDoble = await bpmDeB();
+await evaluar(`document.querySelector('[data-mezcla="octava"][data-valor="2"]')?.click()`);
+await sleep(900);
+const doble = await bpmDeB();
+comprobar('el botón ×2 de la cabina dobla el tempo del plato B',
+  Math.abs(doble - antesDelDoble * 2) < 1, `${antesDelDoble.toFixed(2)} → ${doble.toFixed(2)} bpm`);
+await evaluar(`document.querySelector('[data-mezcla="octava"][data-valor="0.5"]')?.click()`);
+await sleep(900);
+comprobar('y el ÷2 lo devuelve', Math.abs((await bpmDeB()) - antesDelDoble) < 1,
+  `${(await bpmDeB()).toFixed(2)} bpm`);
+
 // Un plato sin canción dice qué hacer, en vez de quedarse en blanco.
 await evaluar(`(async () => { (await import('./mezclador.js')).soltarPlatoB(); })()`);
 await sleep(700);
