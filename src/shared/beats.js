@@ -328,14 +328,14 @@ const preferencia = (bpm, ancho = ANCHO_COSTUMBRE) => Math.exp(
 );
 
 /**
- * La rejilla probando también el doble, la mitad y los tercios.
+ * En qué octava va esta canción.
  *
  * El detector de tempo se equivoca de octava a menudo —en un drum & bass dice
  * la mitad, en una balada con el bombo flojo dice el doble— y da igual lo fino
- * que se ajuste después: con la octava cambiada la mezcla no cuadra jamás, y
- * el número que enseña la aplicación es sencillamente falso. Así que se prueban
- * las octavas de alrededor con un ajuste barato, gana la que más contraste
- * saca, y solo a esa se le hace el ajuste fino.
+ * que se ajuste después: con la octava cambiada la mezcla no cuadra jamás y el
+ * número que enseña la aplicación es sencillamente falso. Así que se prueban
+ * las de alrededor con un ajuste barato —para elegir octava no hace falta
+ * afinar— y gana la que más contraste saca, con la costumbre de desempate.
  */
 export function elegirTempo(envolvente, tasaEnvolvente, bpmAprox, { ancho } = {}) {
   const nada = { bpm: 0, contraste: 0 };
