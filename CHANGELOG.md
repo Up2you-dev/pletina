@@ -42,9 +42,22 @@ la que parecía.
   rejilla en el «uno» que ya está puesto y cambia la cuenta.
 - Una rejilla corregida a mano queda **al día**: la siguiente versión del
   análisis no la pisa con su propia opinión.
+- **Cuánta costumbre.** Cuando la música no rompe el empate lo rompe la
+  costumbre, que vive alrededor de las ciento veinte, y cuánto debe pesar está
+  medido y no elegido a ojo: con noventa y seis canciones fabricadas —seis
+  patrones por dieciséis tempos— el ancho que más acierta es 0,8, y tanto
+  abrirlo como cerrarlo empeora. Abierto se escapan los tempos rápidos de kit
+  escaso, que salen a la mitad; cerrado se doblan las canciones lentas.
 - Medido con música fabricada para la ocasión —bombo, caja, charles, bajo y pad,
   con tempos no redondos y patrones de ocho estilos—: **ocho de ocho en la
   octava buena** y menos de 20 ms de desfase medio, donde antes fallaban tres.
+  En el barrido ancho de ochenta canciones, de 62 aciertos a 67; lo que queda
+  fuera es medio tiempo de verdad, donde dos personas tampoco se pondrían de
+  acuerdo, y para eso está el ×2.
+- Lo que **no** se ha metido: un aviso de «octava dudosa». Se midió —la
+  distancia hasta la segunda lectura— y avisaba de cuatro de los nueve fallos
+  pero también de catorce de los treinta y nueve aciertos. Un aviso que se
+  equivoca un tercio de las veces no informa, cansa.
 
 ### Las teclas
 

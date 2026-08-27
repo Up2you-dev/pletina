@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  FUERZA_MINIMA, contraste, elegirTempo, envolventes, firmeza, medirDeriva, rejillaCompleta,
-  siguienteGolpe,
+  ANCHO_COSTUMBRE, FUERZA_MINIMA, contraste, elegirTempo, envolventes, firmeza, medirDeriva,
+  rejillaCompleta, siguienteGolpe,
 } from '../src/shared/beats.js';
 import { detectarTempo, envolventeDeAtaques } from '../src/shared/musica.js';
 import { cancion, nota, ruido } from './musica-falsa.js';
@@ -153,6 +153,22 @@ describe('contraste', () => {
 });
 
 describe('elegirTempo', () => {
+  it('la costumbre pesa, pero no manda', () => {
+    // El ancho de la curva está medido con noventa y seis canciones
+    // fabricadas; si alguien lo mueve, esto avisa de que ha dejado de estarlo.
+    expect(ANCHO_COSTUMBRE).toBeCloseTo(0.8, 6);
+  });
+
+  it('un tempo rápido con kit escaso no se lee a la mitad', () => {
+    // Es el caso que se llevaba media biblioteca de música rápida: bombo al
+    // uno, caja al tres y charles a semicorcheas.
+    const { muestras, tasa } = cancion({
+      bpm: 148, patron: [0, 1, 2, 3], cajaEn: [1, 3], segundos: 70,
+    });
+    const { total, tasa: tasaEnv } = envolventes(muestras, tasa);
+    expect(elegirTempo(total, tasaEnv, 148).bpm).toBeGreaterThan(140);
+  });
+
   it('recupera la octava aunque el detector diga la mitad', () => {
     const { muestras, tasa } = cancion({ bpm: 128, patron: [0, 1, 2, 3], segundos: 60 });
     const { total, tasa: tasaEnv } = envolventes(muestras, tasa);
