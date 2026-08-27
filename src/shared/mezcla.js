@@ -35,6 +35,25 @@ export const MEDIO_FUERA = -4;
 const redondear = (v) => Math.round(v * 1000) / 1000;
 
 /**
+ * ¿Le queda a la que suena sitio para una transición?
+ *
+ * La transición empieza en el siguiente compás, así que a una canción a la que
+ * le quedan tres segundos el pinchazo le cae después del final: se pulsa
+ * «Mezclar ahora» y no pasa nada, sin decir por qué. Con esto el botón se apaga
+ * y explica que ya no da tiempo, que es lo que uno quiere saber.
+ */
+export function daTiempoAMezclar({ duracion, posicion, bpm, tiemposPorCompas = 4 } = {}) {
+  const largo = Number(duracion);
+  const donde = Number(posicion) || 0;
+  // Sin duración conocida no se le niega nada a nadie: se intenta y ya.
+  if (!(largo > 0)) return true;
+  const compas = duracionDeCompases(Number(bpm) || 0, 1, tiemposPorCompas);
+  // Sin tempo la transición no espera al compás, así que basta con que quede
+  // algo de canción.
+  return largo - donde > (compas > 0 ? compas : 1);
+}
+
+/**
  * @param {object} opciones
  * @param {object} opciones.saliente  bpm, rejilla, posicion (segundo actual), duracion, key
  * @param {object} opciones.entrante  bpm, rejilla, duracion, key
@@ -109,6 +128,14 @@ export function planDeMezcla({
   // De aquí en adelante, todo en segundos de reloj. Lo que le queda a un
   // archivo no es lo que le queda a la sala: un plato ajustado un 10 % gasta su
   // último minuto en cincuenta y cuatro segundos.
+  if (!daTiempoAMezclar({
+    duracion: saliente?.duracion,
+    posicion: saliente?.posicion,
+    bpm: tempoReferencia,
+    tiemposPorCompas: saliente?.rejilla?.tiemposPorCompas ?? 4,
+  })) {
+    avisos.push('A la canción que suena le queda menos de un compás: ya no da tiempo a mezclar.');
+  }
   const restante = Number(saliente?.duracion)
     ? redondear((saliente.duracion - arranque) / (velocidadSaliente || 1))
     : Infinity;

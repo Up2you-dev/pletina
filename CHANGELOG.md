@@ -89,6 +89,13 @@ la que parecía.
   analizar · pulsa Analizar», «sin onda guardada · vuelve a analizarla», «plato
   vacío». Un rectángulo en blanco no dice nada.
 
+### Y de paso
+
+- **«Mezclar ahora» ya no se ofrece cuando no cabe.** A tres segundos del final
+  la transición empieza en el siguiente compás, que cae después de la canción:
+  se pulsaba el botón y no pasaba nada, sin decir por qué. Ahora el botón se
+  apaga y explica que ya no da tiempo.
+
 ### Por dentro
 
 - `prueba-rejilla`, una quinta prueba de extremo a extremo que fabrica canciones

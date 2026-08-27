@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { GRAVE_FUERA, MEDIO_FUERA, describirPlan, planDeMezcla } from '../src/shared/mezcla.js';
+import {
+  GRAVE_FUERA, MEDIO_FUERA, daTiempoAMezclar, describirPlan, planDeMezcla,
+} from '../src/shared/mezcla.js';
 
 const rejilla = (bpm, offset = 0) => ({ bpm, offset, tiempoFuerte: 0, tiemposPorCompas: 4 });
 
@@ -288,5 +290,44 @@ describe('cuadrar como un pinchadiscos', () => {
     expect(medios[0]).toMatchObject({ en: 0, a: MEDIO_FUERA });
     // Y se los devuelve justo en el cambio de graves.
     expect(medios.some((e) => e.en === plan.cambioDeGraves && e.a === 0)).toBe(true);
+  });
+});
+
+describe('daTiempoAMezclar', () => {
+  const cancion = (posicion) => ({ duracion: 200, posicion, bpm: 128, tiemposPorCompas: 4 });
+
+  it('con la canción por la mitad, claro que sí', () => {
+    expect(daTiempoAMezclar(cancion(100))).toBe(true);
+  });
+
+  it('a menos de un compás del final, no', () => {
+    // La transición empieza en el siguiente compás: a un segundo del final, el
+    // pinchazo caería después de la canción y no pasaría nada de nada.
+    expect(daTiempoAMezclar(cancion(199))).toBe(false);
+    expect(daTiempoAMezclar(cancion(198.5))).toBe(false);
+  });
+
+  it('justo por encima del compás, sí', () => {
+    // A 128 pulsaciones, un compás son 1,875 segundos.
+    expect(daTiempoAMezclar(cancion(197.9))).toBe(true);
+  });
+
+  it('sin duración conocida no se le niega nada a nadie', () => {
+    expect(daTiempoAMezclar({ bpm: 128 })).toBe(true);
+    expect(daTiempoAMezclar()).toBe(true);
+  });
+
+  it('sin tempo basta con que quede algo de canción', () => {
+    expect(daTiempoAMezclar({ duracion: 200, posicion: 150, bpm: 0 })).toBe(true);
+    expect(daTiempoAMezclar({ duracion: 200, posicion: 199.5, bpm: 0 })).toBe(false);
+  });
+
+  it('y el plan lo dice en voz alta', () => {
+    const plan = planDeMezcla({
+      saliente: { bpm: 128, duracion: 200, posicion: 199.5, rejilla: rejilla(128) },
+      entrante: { bpm: 128, duracion: 200, rejilla: rejilla(128) },
+      compases: 8,
+    });
+    expect(plan.avisos.some((a) => a.includes('no da tiempo'))).toBe(true);
   });
 });

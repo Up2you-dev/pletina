@@ -1,4 +1,4 @@
-import { LIMITE_AJUSTE, describirPlan, planDeMezcla } from '../shared/mezcla.js';
+import { LIMITE_AJUSTE, daTiempoAMezclar, describirPlan, planDeMezcla } from '../shared/mezcla.js';
 import {
   analizada, duracionDeCompases, rejillaVigente, siguienteCompas,
 } from '../shared/beats.js';
@@ -301,6 +301,18 @@ export function puedeMezclar() {
   // pulsarlo solo decía que no había podido preparar la mezcla.
   if (siguiente === state.currentId) {
     return { puede: false, motivo: 'La siguiente de la cola es la que ya está sonando.' };
+  }
+  // Y que quepa: la transición empieza en el siguiente compás, así que a tres
+  // segundos del final el pinchazo caería después de la canción. Antes el botón
+  // se ofrecía igual y al pulsarlo no pasaba nada.
+  const sonando = fichaDeMezcla(state.currentId);
+  if (!daTiempoAMezclar({
+    duracion: sonando?.duracion,
+    posicion: player.currentTime(),
+    bpm: sonando?.bpm,
+    tiemposPorCompas: sonando?.rejilla?.tiemposPorCompas ?? 4,
+  })) {
+    return { puede: false, motivo: 'A esta canción ya no le queda ni un compás: no da tiempo a mezclar.' };
   }
   return { puede: true };
 }
