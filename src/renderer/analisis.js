@@ -5,6 +5,7 @@ import {
   envolventeDeAtaques,
 } from '../shared/musica.js';
 import { rejillaCompleta } from '../shared/beats.js';
+import { calcularOndas, empaquetar } from '../shared/ondas.js';
 
 /**
  * Analiza una canción para sacarle tempo y tonalidad.
@@ -16,6 +17,7 @@ import { rejillaCompleta } from '../shared/beats.js';
  */
 
 const TASA_ANALISIS = 11025;
+const TASA_ONDA = 22050;
 const SEGUNDOS_MAXIMOS = 90;
 /**
  * Cuánta canción entra en el ajuste de la rejilla. Es más de lo que se mira
@@ -60,6 +62,11 @@ export async function analizarPista(id, contexto) {
   const { muestras, tasa } = reducir(buffer);
   const tramo = tramoCentral(muestras, tasa);
 
+  // La onda se saca del doble de resolución que el análisis: los platos y los
+  // charles viven por encima de los 5 kHz y a 11 kHz no se verían.
+  const paraOnda = reducir(buffer, TASA_ONDA);
+  const ondas = empaquetar(calcularOndas(paraOnda.muestras, paraOnda.tasa));
+
   const { envolvente, tasa: tasaEnvolvente } = envolventeDeAtaques(tramo, tasa);
   const tempo = detectarTempo(envolvente, tasaEnvolvente);
   const tono = detectarTonalidad(chromaDeMuestras(tramo, tasa));
@@ -83,5 +90,7 @@ export async function analizarPista(id, contexto) {
     keyConfianza: tono.confianza,
     // Sin tempo no hay rejilla que valga: se guarda que se ha mirado y ya.
     rejilla,
+    // Y la onda, que se guarda aparte porque no cabe en la biblioteca.
+    ondas,
   };
 }

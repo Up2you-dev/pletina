@@ -45,6 +45,8 @@ contextBridge.exposeInMainWorld('pletina', {
     edit: (ids, patch, opciones) => invoke('tracks:edit', ids, patch, opciones),
     write: (ids) => invoke('tracks:write', ids),
     analysis: (id, datos) => invoke('tracks:analysis', id, datos),
+    /** La forma de onda ya calculada, en binario. `null` si no está analizada. */
+    onda: (id) => invoke('tracks:onda', id),
     cover: (ids, opciones) => invoke('tracks:cover', ids, opciones),
     coverFromPath: (ids, imagePath, opciones) => invoke('tracks:coverFromPath', ids, imagePath, opciones),
     clearCover: (ids) => invoke('tracks:clearCover', ids),

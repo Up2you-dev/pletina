@@ -406,6 +406,8 @@ export function createLibrary({ store, covers, escritor = escritorPorDefecto, on
         // guardan tal cual, pero la aplicación las tratará como pendientes.
         version: Math.max(1, Math.round(Number(rejilla.version) || 1)),
       } : null;
+      // Si hay onda dibujable, se apunta: el archivo vive aparte, en `ondas/`.
+      track.onda = Boolean(datos.onda);
       track.analisis = {
         bpmConfianza: Number(datos.bpmConfianza) || 0,
         keyConfianza: Number(datos.keyConfianza) || 0,

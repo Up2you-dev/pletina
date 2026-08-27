@@ -35,15 +35,19 @@ import { alternarVisualizador, montarVisualizador } from './ui/visualizador.js';
 import { analizada } from '../shared/beats.js';
 import { analizarPista } from './analisis.js';
 import { analizandoLote, analizarLote, cancelarLote } from './analisis-lote.js';
+import { olvidarOnda } from './ondas.js';
 import {
   alCambiarMezclador,
   cambiarAjustes,
+  cargarEnPlatoB,
   margenAutomatico,
   mezclarAhora,
+  platoB,
   prepararPlan,
+  soltarPlatoB,
   terminarMezcla,
 } from './mezclador.js';
-import { refrescarProgreso } from './ui/vista-mezclador.js';
+import { bindCabina, cambiarZoom } from './ui/vista-mezclador.js';
 import {
   bindTransport,
   helpPopover,
@@ -413,7 +417,11 @@ const actions = {
     const resumen = await analizarLote(ids, {
       forzar,
       analizar: (id) => analizarPista(id, motor.contexto),
-      guardar: (id, resultado) => api.track.analysis(id, resultado),
+      guardar: async (id, resultado) => {
+        await api.track.analysis(id, resultado);
+        // La onda de antes ya no vale: se vuelve a pedir cuando haga falta.
+        olvidarOnda(id);
+      },
       yaHecha: (id) => analizada(getTrack(id)),
       titulo: (id) => getTrack(id)?.title ?? '',
       alProgreso: (estado) => {
@@ -631,6 +639,20 @@ const actions = {
       case 'analizar':
         actions.analizar([valor]).then(() => renderStage());
         return;
+      case 'zoom':
+        cambiarZoom(Number(valor));
+        break;
+      case 'preescuchar': {
+        const actual = platoB();
+        if (!actual) return;
+        player.escucharPreparado(!actual.escuchando);
+        renderStage();
+        return;
+      }
+      case 'soltar-b':
+        soltarPlatoB();
+        renderStage();
+        return;
       case 'analizar-par': {
         const preparado = prepararPlan();
         const ids = [preparado?.saliente?.id, preparado?.entrante?.id].filter(Boolean);
@@ -661,6 +683,29 @@ const actions = {
     }
     persist({ mezclador: state.mezclador });
     renderStage();
+  },
+
+  /** Cargar una canción en el plato B: es la manera de ir más allá de la cola. */
+  cargarEnPlatoB(id) {
+    const resultado = cargarEnPlatoB(id);
+    if (!resultado.ok) {
+      toast(resultado.motivo);
+      return;
+    }
+    toast(`«${resultado.ficha.titulo}» esperando en el plato B`);
+    renderStage();
+    renderQueue();
+  },
+
+  /** Saltar dentro de una onda general: en A suena, en B solo se coloca. */
+  saltar(cual, segundo) {
+    if (cual === 'b') player.moverPreparado(segundo);
+    else player.seekTo(segundo);
+  },
+
+  /** Empujar un plato arrastrando su onda, como se empuja un vinilo. */
+  empujar(cual, segundos) {
+    player.empujar(segundos, { plato: cual === 'b' ? 'preparado' : 'activo' });
   },
 
   selectionChanged() {
@@ -1080,6 +1125,26 @@ function onKeyDown(event) {
     case 'G':
       scrollToCurrent();
       break;
+    // La tecla de la cabina: lanzar la mezcla sin soltar el ratón.
+    case 'm':
+    case 'M': {
+      const resultado = mezclarAhora();
+      if (!resultado.ok) toast(resultado.motivo);
+      else {
+        toast(`Mezclando · ${resultado.resumen}`);
+        refreshRows();
+        renderQueue();
+        if (state.view.type === 'mezclador') renderStage();
+      }
+      break;
+    }
+    // Y empujar el plato que suena, como el dedo en el vinilo.
+    case ',':
+      player.empujar(-0.02);
+      break;
+    case '.':
+      player.empujar(0.02);
+      break;
     case '/':
       event.preventDefault();
       $('#q').focus();
@@ -1279,6 +1344,7 @@ async function boot() {
 
   bindRail(railActions);
   bindStage(actions);
+  bindCabina(actions);
   bindQueue(queueActions);
   bindTransport(transportActions);
   bindDrop();
@@ -1387,9 +1453,6 @@ async function boot() {
   alCambiarMezclador(() => {
     if (state.view.type === 'mezclador') renderStage();
   });
-  setInterval(() => {
-    if (state.view.type === 'mezclador') refrescarProgreso();
-  }, 250);
 
   api.on.command(onCommand);
   api.on.libraryProgress(showProgress);

@@ -15,6 +15,7 @@ import {
 } from 'electron';
 import { createStore } from './store.js';
 import { createCoverCache } from './covers.js';
+import { createOndaStore } from './ondas.js';
 import { LIBRARY_DEFAULTS, createLibrary } from './library.js';
 import { APP_SCHEME, appUrl, handleProtocols, registerSchemes } from './protocols.js';
 import { buildMenu } from './menu.js';
@@ -64,6 +65,7 @@ let mainWindow = null;
 let library = null;
 let settings = null;
 let libraryStore = null;
+let ondasStore = null;
 const watchers = new Map();
 let watchTimer = null;
 const pendingWatched = new Set();
@@ -377,9 +379,14 @@ function registerIpc() {
   handle('library:stopScan', () => library.stopScan());
   handle('library:removeTracks', (ids) => {
     library.removeTracks(ids);
+    ondasStore.borrar(ids);
     return { removed: ids.length };
   });
-  handle('library:removeMissing', () => ({ removed: library.removeMissing().length }));
+  handle('library:removeMissing', () => {
+    const fuera = library.removeMissing();
+    ondasStore.borrar(fuera);
+    return { removed: fuera.length };
+  });
   handle('library:reveal', (id) => {
     const track = library.getTrack(id);
     if (track) shell.showItemInFolder(track.path);
@@ -423,7 +430,15 @@ function registerIpc() {
     return resultado;
   });
   handle('tracks:write', (ids) => library.escribirEnArchivos(Array.isArray(ids) ? ids : []));
-  handle('tracks:analysis', (id, datos) => library.setAnalysis(id, datos ?? {}));
+  handle('tracks:analysis', async (id, datos) => {
+    // La onda no cabe en la biblioteca: son cien kilobytes por canción y ese
+    // archivo se lee entero en cada arranque. Va a su carpeta, y en la
+    // biblioteca queda solo la nota de que existe.
+    const { ondas, ...resto } = datos ?? {};
+    const onda = ondas ? await ondasStore.guardar(id, ondas) : false;
+    return library.setAnalysis(id, { ...resto, onda });
+  });
+  handle('tracks:onda', (id) => ondasStore.leer(id));
   handle('tracks:cover', async (ids, opciones) => {
     const lista = Array.isArray(ids) ? ids : [];
     if (!lista.length) return { ok: false };
@@ -545,6 +560,7 @@ if (!app.requestSingleInstanceLock()) {
     nativeTheme.themeSource = settings.data.theme ?? 'system';
 
     const covers = createCoverCache(path.join(userData, 'caratulas'));
+    ondasStore = createOndaStore(path.join(userData, 'ondas'));
     library = createLibrary({
       store: libraryStore,
       covers,

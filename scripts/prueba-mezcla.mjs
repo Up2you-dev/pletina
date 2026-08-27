@@ -211,7 +211,53 @@ if (!puestas) await terminar(1, 'MEZCLA: la biblioteca no ha leído las dos canc
 await sleep(1500);
 
 await evaluar(`[...document.querySelectorAll('.nav-item')].find(n => n.textContent.includes('Mezclador')).click()`);
-await sleep(600);
+await sleep(900);
+
+/* ------------------------------------------------------------- la cabina */
+
+console.log('la cabina:');
+const ondaGuardada = await evaluar(`(async () => {
+  const s = await window.pletina.library.snapshot();
+  const t = s.tracks.find(x => x.title === 'Sale');
+  const datos = await window.pletina.track.onda(t.id);
+  return { apuntada: Boolean(t.onda), bytes: datos ? datos.byteLength : 0 };
+})()`);
+comprobar('el análisis deja la onda guardada', ondaGuardada.apuntada && ondaGuardada.bytes > 1000,
+  `${Math.round(ondaGuardada.bytes / 1024)} kB`);
+
+const lienzos = await evaluar(`[...document.querySelectorAll('.cabina canvas')].map(c => c.dataset.onda)`);
+comprobar('hay dos ondas por plato', lienzos.length === 4, lienzos.join(', '));
+const pintado = await evaluar(`(() => {
+  const c = document.querySelector('[data-onda="zoom-a"]');
+  const ctx = c.getContext('2d');
+  const datos = ctx.getImageData(0, 0, c.width, c.height).data;
+  let pintados = 0;
+  for (let i = 3; i < datos.length; i += 4) if (datos[i] > 8) pintados += 1;
+  return Math.round((pintados / (datos.length / 4)) * 100);
+})()`);
+comprobar('la onda del plato A se pinta de verdad', pintado > 3, `${pintado} % del lienzo con tinta`);
+
+const candidato = await evaluar(`(() => {
+  const c = document.querySelector('.candidato');
+  return c ? c.textContent.replace(/\\s+/g, ' ').trim() : null;
+})()`);
+comprobar('sugiere qué pinchar después', Boolean(candidato), candidato ?? 'sin sugerencias');
+await evaluar(`document.querySelector('.candidato')?.click()`);
+await sleep(1200);
+const enB = await evaluar(`(async () => (await import('./player.js')).estadoPreparado())()`);
+comprobar('al elegirla se carga en el plato B', Boolean(enB.id) && enB.listo, JSON.stringify(enB));
+comprobar('y entra por donde la canción empieza a sonar', enB.tiempo >= ENTRANTE.silencio - 0.2,
+  `${enB.tiempo?.toFixed(2)} s`);
+
+// Empujar el plato B lo mueve, que es lo que hace un pinchadiscos con el dedo.
+const antesDelEmpujon = enB.tiempo;
+await evaluar(`(async () => (await import('./player.js')).empujar(0.35, { plato: 'preparado' }))()`);
+await sleep(300);
+const trasElEmpujon = await evaluar(`(async () => (await import('./player.js')).estadoPreparado().tiempo)()`);
+comprobar('empujar el plato preparado lo mueve', Math.abs(trasElEmpujon - antesDelEmpujon - 0.35) < 0.05,
+  `${antesDelEmpujon?.toFixed(2)} s → ${trasElEmpujon?.toFixed(2)} s`);
+await evaluar(`(async () => (await import('./player.js')).moverPreparado(${antesDelEmpujon}))()`);
+await sleep(200);
 
 const compasDe = (bpm) => (4 * 60) / bpm;
 const fichas = await evaluar(`(async () => {

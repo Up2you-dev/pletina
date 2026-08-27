@@ -1,5 +1,6 @@
-import { describirPlan, planDeMezcla } from '../shared/mezcla.js';
-import { rejillaVigente } from '../shared/beats.js';
+import { LIMITE_AJUSTE, describirPlan, planDeMezcla } from '../shared/mezcla.js';
+import { analizada, rejillaVigente } from '../shared/beats.js';
+import { tonalidadesCompatibles } from '../shared/musica.js';
 import { advance } from '../shared/queue.js';
 import { getTrack, state } from './state.js';
 import * as player from './player.js';
@@ -70,10 +71,81 @@ export function siguienteEnLaCola() {
 }
 
 /**
+ * Qué va a entrar: lo que haya cargado en el plato B y, si no hay nada, lo
+ * siguiente de la cola.
+ *
+ * Este orden es la diferencia entre un reproductor y una cabina. En un
+ * reproductor manda la lista; en una cabina mandas tú, y la lista es solo lo
+ * que hay si no dices otra cosa.
+ */
+export function entranteElegida() {
+  return player.estadoPreparado().id || siguienteEnLaCola();
+}
+
+/** Carga una canción en el plato B, por donde empiece a sonar de verdad. */
+export function cargarEnPlatoB(id, { en } = {}) {
+  const ficha = fichaDeMezcla(id);
+  if (!ficha) return { ok: false, motivo: 'Esa canción ya no está.' };
+  if (player.mezclando()) return { ok: false, motivo: 'Espera a que termine la mezcla.' };
+  if (id === state.currentId) return { ok: false, motivo: 'Esa es la que está sonando.' };
+  const entrada = Number.isFinite(en) ? en : (ficha.rejilla?.entrada ?? 0);
+  if (!player.prepararPlato(id, { en: entrada })) {
+    return { ok: false, motivo: 'Este equipo no permite preparar el segundo plato.' };
+  }
+  avisar();
+  return { ok: true, ficha, en: entrada };
+}
+
+/** Deja el plato B libre. */
+export function soltarPlatoB() {
+  const hecho = player.soltarPreparado();
+  if (hecho) avisar();
+  return hecho;
+}
+
+/**
+ * Qué pinchar después.
+ *
+ * Ordenado como lo pensaría un pinchadiscos: primero lo que encaja de
+ * tonalidad, luego lo que menos hay que estirar, y fuera lo que no se puede
+ * cuadrar sin que se note. No es «la siguiente de la lista», es un abanico.
+ */
+export function candidatos({ cuantos = 14 } = {}) {
+  const sonando = fichaDeMezcla(state.currentId);
+  const enPlatoB = player.estadoPreparado().id;
+  if (!sonando?.bpm) return [];
+
+  const lista = [];
+  for (const track of state.tracks) {
+    if (track.id === state.currentId || track.id === enPlatoB) continue;
+    if (!analizada(track) || !track.bpm) continue;
+    const ficha = fichaDeMezcla(track.id);
+    if (!ficha?.bpm) continue;
+
+    let razon = sonando.bpm / ficha.bpm;
+    for (const factor of [0.5, 2]) {
+      if (Math.abs(razon * factor - 1) < Math.abs(razon - 1)) razon *= factor;
+    }
+    const ajuste = Math.abs(razon - 1);
+    if (ajuste > LIMITE_AJUSTE) continue;
+    const armonica = Boolean(sonando.key && ficha.key && tonalidadesCompatibles(sonando.key, ficha.key));
+    lista.push({
+      ...ficha,
+      ajuste,
+      armonica,
+      // La tonalidad pesa más que el tempo: estirar un 3 % no se oye, y una
+      // tonalidad que choca sí.
+      puntos: (armonica ? 2 : 0) + (1 - ajuste / LIMITE_AJUSTE),
+    });
+  }
+  return lista.sort((a, b) => b.puntos - a.puntos).slice(0, cuantos);
+}
+
+/**
  * Prepara el plan con lo que hay ahora mismo: qué suena, por dónde va y qué
  * viene después. No cambia nada; sirve para enseñarlo antes de lanzarlo.
  */
-export function prepararPlan(idEntrante = siguienteEnLaCola()) {
+export function prepararPlan(idEntrante = entranteElegida()) {
   const salienteId = state.currentId;
   if (!salienteId || !idEntrante || salienteId === idEntrante) return null;
 
@@ -82,6 +154,7 @@ export function prepararPlan(idEntrante = siguienteEnLaCola()) {
   if (!saliente || !entrante) return null;
 
   const { tiempo, velocidad } = player.platoActivo();
+  const preparado = player.estadoPreparado();
   const ajustes = state.mezclador;
   const plan = planDeMezcla({
     saliente: {
@@ -100,10 +173,13 @@ export function prepararPlan(idEntrante = siguienteEnLaCola()) {
       duracion: entrante.duracion,
       rejilla: entrante.rejilla ?? { bpm: entrante.bpm, offset: 0, tiempoFuerte: 0, tiemposPorCompas: 4 },
     },
-    // Por dónde entra la que entra: casi ningún archivo empieza a sonar en el
-    // segundo cero, y meter el silencio del principio en la mezcla es de las
-    // cosas que más cantan.
-    entradaEntrante: entrante.rejilla?.entrada ?? 0,
+    // Por dónde entra la que entra: si la has colocado tú en el plato B, manda
+    // eso. Si no, por donde la canción empieza a sonar de verdad, porque casi
+    // ningún archivo empieza en el segundo cero y meter ese silencio en la
+    // mezcla es de las cosas que más cantan.
+    entradaEntrante: preparado.id === idEntrante && preparado.listo
+      ? preparado.tiempo
+      : (entrante.rejilla?.entrada ?? 0),
     compases: ajustes.compases,
     estilo: ajustes.estilo,
     ajustarTempo: ajustes.ajustarTempo,
@@ -131,13 +207,20 @@ export function prepararPlan(idEntrante = siguienteEnLaCola()) {
   };
 }
 
+/** Lo que hay ahora mismo en el plato B, con su ficha. */
+export function platoB() {
+  const preparado = player.estadoPreparado();
+  if (!preparado.id) return null;
+  return { ...preparado, ficha: fichaDeMezcla(preparado.id) };
+}
+
 /** ¿Se puede mezclar ahora mismo? */
 export function puedeMezclar() {
   if (!state.currentId || !state.playing) return { puede: false, motivo: 'No hay nada sonando.' };
   if (player.mezclando()) return { puede: false, motivo: 'Ya hay una mezcla en marcha.' };
   if (!player.hayMotor()) return { puede: false, motivo: 'Este equipo no permite mezclar.' };
-  const siguiente = siguienteEnLaCola();
-  if (!siguiente) return { puede: false, motivo: 'No hay ninguna canción esperando en la cola.' };
+  const siguiente = entranteElegida();
+  if (!siguiente) return { puede: false, motivo: 'Carga algo en el plato B o pon algo en la cola.' };
   // Una canción no se mezcla consigo misma: sin esto el botón se ofrecía y al
   // pulsarlo solo decía que no había podido preparar la mezcla.
   if (siguiente === state.currentId) {
@@ -147,7 +230,7 @@ export function puedeMezclar() {
 }
 
 /** Lanza la mezcla. Devuelve el plan ejecutado o un motivo por el que no. */
-export function mezclarAhora(idEntrante = siguienteEnLaCola()) {
+export function mezclarAhora(idEntrante = entranteElegida()) {
   const disponible = puedeMezclar();
   if (!disponible.puede) return { ok: false, motivo: disponible.motivo };
 
@@ -187,6 +270,7 @@ export function estadoDeMezcla() {
     enCurso,
     ajustes: state.mezclador,
     disponible: puedeMezclar(),
+    platoB: platoB(),
   };
 }
 

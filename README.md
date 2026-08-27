@@ -58,7 +58,7 @@ npm run dist:win     # y esto te deja el instalador en release\
 Y para lo demás:
 
 ```bash
-npm run verify       # lint + 233 pruebas + arranque real, arrastre, mezcla y cadena
+npm run verify       # lint + 268 pruebas + arranque real, arrastre, mezcla y cadena
 npm run dist:mac     # .dmg (arm64 + x64)  · hay que ejecutarlo EN un Mac
 npm run dist:linux   # AppImage + .deb
 ```
@@ -92,7 +92,8 @@ src/
 ├─ preload/     el único puente, por contextBridge (preload.mjs)
 ├─ renderer/    la interfaz: sin framework, módulos ES servidos por pletina://
 └─ shared/      lógica pura compartida y probada (cola, orden, formato, Range,
-                tempo y tonalidad, rejilla de compases, plan de mezcla)
+                tempo y tonalidad, rejilla de compases, plan de mezcla,
+                ondas de tres bandas y geometría del visor)
 ```
 
 **Dos esquemas propios.** `pletina://` sirve la interfaz —al no ser `file://`, la
@@ -140,12 +141,40 @@ haya cambiado.
 temporal y se renombran, con las escrituras agrupadas. Un corte de luz no deja un
 JSON a medias, y un JSON ilegible se aparta como `.corrupto` en vez de perderse.
 
-## El mezclador
+## La cabina
 
-Tiene pantalla propia, estado propio y su propio criterio: no es un interruptor
-del reproductor, es una unidad que le toma prestados los dos platos. Encadena
-dos canciones **como lo haría un pinchadiscos**, y enseña exactamente lo que va
-a hacer antes de hacerlo.
+El mezclador tiene pantalla propia, estado propio y su propio criterio: no es un
+interruptor del reproductor, es una unidad que le toma prestados los dos platos.
+Y se parece a una cabina porque hace lo que hace una cabina.
+
+**Dos platos, uno encima de otro.** Arriba, lo que suena. Abajo, lo que
+preparas. Cada uno con dos vistas de su onda: la general —la canción entera,
+para ver la estructura y saltar por ella— y la ampliada, con la cabeza en el
+centro y la rejilla de compases dibujada encima. Las dos vistas ampliadas
+comparten el eje de tiempo, así que **cuando las dos canciones van cuadradas sus
+líneas de compás caen a la misma altura**. Eso es lo que se mira al mezclar: no
+el número, el dibujo. El número también está —el desfase entre las dos rejillas,
+en milisegundos—, pero es la comprobación, no la herramienta.
+
+**Ondas de tres bandas.** Graves en azul, medios en ámbar, agudos en gris. No es
+decoración: en una silueta gris no se ve dónde entra el bombo ni dónde se va la
+voz, y en tres colores se ve de un vistazo. Cuando una canción entra sin graves,
+su banda grave se pinta a media luz: lo que se ve es lo que se oye.
+
+**El plato B lo cargas tú.** Desde las sugerencias, desde el menú de cualquier
+canción o desde la cola. Se queda esperando, colocado por donde la canción
+empieza a sonar de verdad —casi ningún archivo empieza en el segundo cero—, se
+puede preescuchar, mover arrastrando y quitar. La cola sigue estando, pero deja
+de mandar: eso es lo que separa una cabina de una lista de reproducción.
+
+**Arrastrar una onda es empujar el plato.** En el que suena se traduce en un
+empujón —acelerar o frenar un pelo durante un momento— porque saltar sonaría a
+corte; en el que preparas, que está parado, se mueve y ya. Con `,` y `.` se hace
+lo mismo a golpe de tecla, y con `M` se lanza la mezcla.
+
+**Qué pinchar después.** Un abanico de la biblioteca ordenado como lo pensaría
+un pinchadiscos: primero lo que encaja de tonalidad, luego lo que menos hay que
+estirar, y fuera lo que no se puede cuadrar sin que se note.
 
 Qué hace en una transición:
 
@@ -153,32 +182,23 @@ Qué hace en una transición:
    siguiente inicio de frase de la que está sonando —o de compás, si la frase no
    está clara—; y la que entra empieza en el suyo. Es lo que hace que los dos
    bombos caigan juntos en vez de pisarse.
-2. **Entra por donde suena.** Casi ningún archivo empieza a sonar en el segundo
-   cero, así que se detecta por dónde entra de verdad y se pincha desde ahí, no
-   desde el silencio del principio.
-3. **Iguala el tempo** de la que entra al de la que sale, siempre que la
+2. **Iguala el tempo** de la que entra al de la que sale, siempre que la
    distancia sea inferior al 12 % —medio tempo y doble tempo cuentan como el
    mismo pulso—. Con el estirado de tiempo activado, la canción cambia de
    velocidad sin cambiar de tonalidad.
-4. **Empuja el plato.** Medio segundo después de arrancar mide el desfase real
+3. **Empuja el plato.** Medio segundo después de arrancar mide el desfase real
    entre las dos rejillas y lo corrige acelerando un 2 % lo justo para
-   recuperarlo, como quien empuja el plato con el dedo: entre pedirle una
-   posición a un archivo y que suene se van milisegundos, y veinte milisegundos
-   ya se oyen. Medido en la prueba de extremo a extremo: 2 ms de desfase mediano
-   durante toda la transición.
-5. **Cambia los graves.** La que entra lo hace con los graves fuera (−26 dB) y
+   recuperarlo: entre pedirle una posición a un archivo y que suene se van
+   milisegundos, y veinte milisegundos ya se oyen. Medido en la prueba de
+   extremo a extremo: 2 ms de desfase mediano durante toda la transición.
+4. **Cambia los graves.** La que entra lo hace con los graves fuera (−26 dB) y
    con un pellizco en los medios, que es donde se pelean las voces: dos bombos a
    la vez suenan a barro. Sube de volumen durante la primera mitad y, en un
    inicio de compás a mitad de transición, se intercambian los graves. La que
    sale se va por arriba en la segunda mitad.
-6. **Avisa en vez de disimular.** Si a una canción le falta el análisis, si los
+5. **Avisa en vez de disimular.** Si a una canción le falta el análisis, si los
    tempos están demasiado lejos o si las tonalidades chocan, lo dice antes de
    sonar y ofrece analizar ahí mismo.
-
-Hay tres maneras de entrar: *Cambio de graves* (la de siempre), *Fundido largo*
-(cruce de igual potencia) y *Corte en el compás* (seco, sin cruce), de cuatro a
-treinta y dos compases. Con «mezclar sola» encendido, lo hace con cada canción
-de la cola sin tocar nada.
 
 **La rejilla es lo que hace que suene cuadrado.** No se estima: se ajusta. Del
 detector de tempo sale un número aproximado, y a partir de ahí se busca el par
@@ -189,22 +209,32 @@ y una mezcla que empieza cuadrada y acaba de cualquier manera. La energía del
 bombo se mide con un filtro aplicado de ida y de vuelta, que no tiene desfase,
 en marcos de seis milisegundos.
 
-**Y la pantalla lo enseña por compases.** Mientras dura la transición no hay una
-barra de porcentaje: hay ocho casillas —una por compás—, la que está sonando,
-la del cambio de graves marcada, y debajo el volumen y los graves reales de cada
-plato leídos del grafo de audio. Es como se cuenta en una cabina y es la única
-manera de ver si va cuadrada.
-
 **Cómo está partido.** El plan de una mezcla es una función pura —qué pasa y
 cuándo, como una lista de eventos con su instante, su parámetro y su rampa— en
 `shared/mezcla.js`; el análisis del bombo y la rejilla de compases, en
-`shared/beats.js`; la unidad que decide y recuerda, en `renderer/mezclador.js`;
-y la traducción a automatización del grafo de audio, en `renderer/player.js`.
-Por eso se puede probar una transición de discoteca sin altavoces: se mira el
-plan y se comprueba que los graves se cambian en el compás correcto. Todo se
-programa de una vez sobre el reloj del audio, nunca con temporizadores de
-JavaScript: un `setTimeout` llega tarde, y en una mezcla eso son dos bombos
-pisándose.
+`shared/beats.js`; las cuentas del visor, en `shared/onda-vista.js`; la unidad
+que decide y recuerda, en `renderer/mezclador.js`; el dibujo, en
+`renderer/ui/onda.js`; y la traducción a automatización del grafo de audio, en
+`renderer/player.js`. Por eso se puede probar una transición de discoteca sin
+altavoces: se mira el plan y se comprueba que los graves se cambian en el compás
+correcto. Todo se programa de una vez sobre el reloj del audio, nunca con
+temporizadores de JavaScript: un `setTimeout` llega tarde, y en una mezcla eso
+son dos bombos pisándose.
+
+**Por qué el visor es propio.** Se miró lo que hay hecho: `wavesurfer.js`
+(BSD-3) es el estándar para pintar ondas en la web, pero está construido
+alrededor de su propio reproductor y de su propia línea de tiempo, y aquí hacen
+falta dos platos sobre un eje compartido, estirados por el ajuste de tempo y
+pintados con el reloj de audio de la aplicación; `peaks.js` es LGPL y arrastra
+el mismo problema de modelo. Así que el visor son doscientas líneas de lienzo
+propias —pero la técnica de dibujo no se ha inventado: tres formas rellenas
+centradas, la grave detrás y la aguda delante, que es como lo hacen rekordbox y
+Serato.
+
+**Las ondas se guardan.** Se calculan al analizar —tres bandas, ciento cincuenta
+marcos por segundo— y viven en su propia carpeta, un archivo por canción: ciento
+treinta kilobytes para cinco minutos, que se dibujan sin decodificar nada. Es
+regenerable: si se borra la carpeta, basta con volver a analizar.
 
 ## Datos
 
@@ -215,7 +245,8 @@ Todo vive en la carpeta de datos del sistema (`Ayuda › Abrir la carpeta de dat
 - Linux: `~/.config/Pletina`
 
 Con `biblioteca.json` (rutas y etiquetas), `ajustes.json` (volumen, vista, última
-canción y su posición) y `caratulas/` (portadas reescaladas). Borrar esa carpeta
+canción y su posición), `caratulas/` (portadas reescaladas) y `ondas/` (la forma
+de onda de tres bandas de cada canción analizada). Borrar esa carpeta
 deja la aplicación como recién instalada; **la música no se toca nunca**.
 
 ## Atajos
@@ -228,6 +259,8 @@ deja la aplicación como recién instalada; **la música no se toca nunca**.
 | ↑ ↓ | volumen |
 | S · R · Q · F | aleatorio · repetir · cola · favorita |
 | G | ir a lo que está sonando |
+| M | mezclar ahora |
+| , · . | empujar el plato que suena |
 | / o `Cmd/Ctrl+F` | buscar |
 | Alt + ↑ ↓ | mover la canción dentro de una lista |
 | Mayús · Cmd/Ctrl + clic | seleccionar varias |
@@ -258,7 +291,7 @@ y los empaqueta en `.ico` y `.icns`).
 
 ## Pruebas
 
-- `npm test` — 233 pruebas sobre la lógica pura (cola, orden y búsqueda,
+- `npm test` — 268 pruebas sobre la lógica pura (cola, orden y búsqueda,
   formato, `Range`), sobre el almacén y la biblioteca contra archivos de verdad
   en carpetas temporales —análisis incremental, ausencias, discos desconectados,
   correcciones de etiquetas, listas y M3U de ida y vuelta— y de contrato entre
@@ -276,7 +309,7 @@ y los empaqueta en `.ico` y `.icns`).
   ajustado no se propagaba a la siguiente canción. Comprueba que las dos
   transiciones ocurren solas, que no hay un silencio en toda la cadena y que los
   compases siguen juntos en las dos.
-- `npm run test:mezcla` — veintitrés comprobaciones sobre la aplicación de
+- `npm run test:mezcla` — treinta comprobaciones sobre la aplicación de
   verdad. Fabrica dos canciones con bombo a 128 y 126 —una con cuatro segundos
   de silencio delante—, las analiza en lote desde la biblioteca y mide la
   transición sobre el grafo de audio: que el tempo se afina hasta la centésima,
@@ -284,12 +317,15 @@ y los empaqueta en `.ico` y `.icns`).
   compás, que la que entra no arranca por el silencio, que va a la velocidad del
   plan sin cambiar de tono, que entra sin graves, y que los compases de las dos
   se mantienen a menos de un 0,6 % durante quince segundos. Y luego corta una
-  mezcla a la mitad y comprueba que la canción se queda con sus graves. Existe
-  por el mismo motivo que la anterior: los dos errores más gordos del mezclador
-  —el tempo que no llegaba al plato y los graves que no volvían— no los puede
-  ver ninguna prueba unitaria.
+  mezcla a la mitad y comprueba que la canción se queda con sus graves. Y de la
+  cabina: que el análisis deja la onda guardada, que los cuatro lienzos se
+  pintan de verdad, que la sugerencia carga en el plato B por donde la canción
+  empieza a sonar y que empujar el plato lo mueve. Existe por el mismo motivo
+  que la anterior: los dos errores más gordos del mezclador —el tempo que no
+  llegaba al plato y los graves que no volvían— no los puede ver ninguna prueba
+  unitaria.
 
-En Linux sin escritorio, las dos últimas usan `xvfb-run` automáticamente.
+En Linux sin escritorio, las cuatro últimas usan `xvfb-run` automáticamente.
 
 ## Límites conocidos
 
@@ -309,7 +345,11 @@ En Linux sin escritorio, las dos últimas usan `xvfb-run` automáticamente.
   final; con música de caja de ritmos, clava.
 - Analizar cuesta unos segundos por canción, casi todos en decodificar el audio.
   Una biblioteca grande se analiza en lote y en segundo plano, pero no es
-  instantáneo.
+  instantáneo. Sin analizar no hay onda que dibujar: la cabina enseña la canción
+  en gris y ofrece analizarla.
+- La preescucha del plato B suena por la misma salida que la música, porque hay
+  una sola. Sirve para encontrar la entrada con la música bajita, no para
+  preparar a escondidas: eso pide una tarjeta con dos salidas.
 - No hay reproducción sin cortes (*gapless*) de verdad: se precarga la siguiente
   canción para acortar el salto, pero entre pistas hay un silencio mínimo.
 - Las carátulas sueltas se buscan por nombre (`cover.jpg`, `folder.jpg`…), no por

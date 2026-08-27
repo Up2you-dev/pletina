@@ -4,6 +4,74 @@ Las versiones siguen [SemVer](https://semver.org/lang/es/). Cada una se
 construye desde la pestaña *Actions* del repositorio; una etiqueta `v1.2.3`
 además publica los instaladores sueltos en la página de versiones.
 
+## 4.0.0 — 2026-08-26
+
+El mezclador deja de ser una pantalla con dos fichas y pasa a ser una **cabina**:
+dos platos con sus ondas, uno encima de otro, y tú decidiendo qué entra.
+
+### Se ve
+
+- **Visor de ondas de tres bandas.** Graves en azul, medios en ámbar, agudos en
+  gris: es como se dibujan las ondas en las cabinas desde hace quince años, y no
+  es decoración. En una silueta gris no se ve dónde entra el bombo ni dónde se
+  va la voz; en tres colores se ve de un vistazo. Cada canción tiene dos vistas:
+  la general —la canción entera, para ver la estructura y saltar por ella— y la
+  ampliada, con la cabeza en el centro y la rejilla de compases encima.
+- **Las dos ondas comparten eje de tiempo.** Cuando las dos canciones van
+  cuadradas, sus líneas de compás caen a la misma altura de la pantalla. Eso es
+  lo que se mira al mezclar: no el número, el dibujo.
+- **Y un número, para los incrédulos**: el desfase entre las dos rejillas en
+  milisegundos, que se pone en azul cuando está por debajo de doce.
+- **La rejilla se dibuja con jerarquía**: la frase se ve, el compás se nota y el
+  golpe solo acompaña. Y cuando una canción entra sin graves, su banda grave se
+  pinta a media luz: lo que se ve es lo que se oye.
+
+### Se toca
+
+- **Plato B.** Cargas lo que tú quieras —desde las sugerencias, desde el menú de
+  cualquier canción— y se queda esperando, colocado por donde la canción empieza
+  a sonar de verdad. Se puede preescuchar, mover y quitar. La cola sigue
+  estando, pero deja de mandar: eso es lo que separa una cabina de una lista de
+  reproducción.
+- **Arrastrar una onda es empujar el plato.** En el que suena se traduce en un
+  empujón —acelerar o frenar un pelo— porque saltar sonaría a corte; en el que
+  preparas, que está parado, se mueve y ya. También con las teclas `,` y `.`.
+- **Entrar sin retardo.** Al mezclar, si el plato ya estaba preparado no se
+  vuelve a abrir el archivo: entra con el búfer hecho, que es de las cosas que
+  más ayudaban a que no cuadrase.
+- **Qué pinchar después.** Un abanico de la biblioteca ordenado como lo pensaría
+  un pinchadiscos: primero lo que encaja de tonalidad, luego lo que menos hay
+  que estirar, y fuera lo que no se puede cuadrar sin que se note.
+- **La tecla `M`** lanza la mezcla sin soltar el ratón.
+
+### Por dentro
+
+- Las ondas se calculan al analizar y se guardan en su propia carpeta
+  (`ondas/`), un archivo por canción: tres tiras de bytes, una por banda, a
+  ciento cincuenta marcos por segundo. Una canción de cinco minutos ocupa ciento
+  treinta kilobytes y se dibuja sin decodificar nada. Es regenerable: si se
+  borra la carpeta, basta con volver a analizar.
+- La cabina se pinta con su propio bucle a la frecuencia de la pantalla, y se
+  para sola al salir de ella.
+- 268 pruebas. Las cuentas del visor —qué tramo se ve, qué columna le toca a
+  cada marco, dónde caen las líneas y cuánto desfase hay entre dos rejillas—
+  están separadas del dibujo justamente para poder probarlas sin pantalla.
+- `npm run test:mezcla` comprueba además que el análisis deja la onda guardada,
+  que los cuatro lienzos se pintan de verdad, que la sugerencia carga en el
+  plato B por donde la canción empieza a sonar y que empujar el plato lo mueve.
+
+### Sobre las librerías
+
+Se miró lo que hay hecho antes de escribir: **wavesurfer.js** (BSD-3) es el
+estándar para pintar ondas en la web, pero está construido alrededor de su
+propio reproductor y de su propia línea de tiempo, y aquí hacen falta dos platos
+sobre un eje compartido, estirados por el ajuste de tempo y pintados con el
+reloj de audio de la aplicación. **peaks.js** es LGPL y arrastra el mismo
+problema de modelo. Así que el visor es propio —doscientas líneas de lienzo—,
+pero la técnica de dibujo no se ha inventado: tres formas rellenas centradas,
+la grave detrás y la aguda delante, que es como lo hacen rekordbox y Serato y
+como se explica en la discusión de la comunidad de wavesurfer.
+
 ## 3.1.1 — 2026-08-23
 
 Repaso a fondo del mezclador, buscando lo que se rompe al usarlo de verdad y no

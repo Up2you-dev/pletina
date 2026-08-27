@@ -38,6 +38,16 @@ const otro = () => platos[1 - activo];
 
 let encadenando = false;
 let avisadoFinal = false;
+/** Cuánto suena el plato preparado cuando se preescucha. */
+const PREESCUCHA = 0.55;
+/**
+ * Qué plato tiene algo preparado, o null.
+ *
+ * Hace falta apuntarlo: «el otro plato» no vale como definición, porque en
+ * cuanto empieza una mezcla los papeles se cambian y el que salía pasaría a
+ * parecer el preparado.
+ */
+let platoConPreparada = null;
 /** Número de la mezcla en curso: distingue una transición de la siguiente. */
 let mezclaActual = 0;
 let fallos = 0;
@@ -53,6 +63,7 @@ const hooks = {
   onPositionSave: () => {},
   onCercaDelFinal: () => {},
   onMezcla: () => {},
+  onPreparado: () => {},
   /** Segundos de fundido, o 0 para encadenar sin cruce. Lo decide la interfaz. */
   margenDeFundido: () => 0,
 };
@@ -92,6 +103,135 @@ export function estadoDePlatos() {
     medio: p.nodos ? Math.round(p.nodos.medio.gain.value * 10) / 10 : null,
     agudo: p.nodos ? Math.round(p.nodos.agudo.gain.value * 10) / 10 : null,
   }));
+}
+
+/* ------------------------------------------------------- el plato que se prepara */
+
+/**
+ * El segundo plato, antes de la mezcla.
+ *
+ * Un pinchadiscos no espera a que la cola decida: carga la siguiente en el
+ * plato libre, la coloca donde quiere que entre y la deja esperando. Eso es lo
+ * que hace esto. El plato preparado no suena —o suena bajito, si se pide
+ * preescucha— y, cuando llega la mezcla, ya está cargado: entra sin el retardo
+ * de abrir un archivo, que era de los peores enemigos de que cuadrara.
+ */
+export function prepararPlato(id, { en = 0, escuchar = false } = {}) {
+  if (!motor || encadenando) return false;
+  const track = getTrack(id);
+  const libre = otro();
+  if (!track || !libre.nodos) return false;
+
+  platoConPreparada = 1 - activo;
+  libre.id = id;
+  libre.el.src = window.pletina.media.track(id);
+  libre.el.preservesPitch = true;
+  libre.el.playbackRate = 1;
+  motor.limpiarPlato(libre.nodos);
+  fijarGanancia(libre, escuchar ? PREESCUCHA : 0);
+
+  const colocar = () => {
+    try {
+      libre.el.currentTime = Math.max(0, en);
+    } catch {
+      /* aún sin metadatos */
+    }
+  };
+  colocar();
+  libre.el.addEventListener('loadedmetadata', colocar, { once: true });
+  if (escuchar) {
+    const promesa = libre.el.play();
+    if (promesa?.catch) promesa.catch(() => {});
+  } else {
+    libre.el.pause();
+  }
+  hooks.onPreparado?.(estadoPreparado());
+  return true;
+}
+
+/** El plato con algo preparado, si lo hay. */
+function preparado() {
+  if (platoConPreparada === null) return null;
+  const candidato = platos[platoConPreparada];
+  return candidato?.id ? candidato : null;
+}
+
+/** Mueve el plato preparado sin ruido: está parado, así que no chasquea. */
+export function moverPreparado(segundo) {
+  const libre = preparado();
+  if (!libre || encadenando) return false;
+  try {
+    libre.el.currentTime = Math.max(0, segundo);
+  } catch {
+    return false;
+  }
+  hooks.onPreparado?.(estadoPreparado());
+  return true;
+}
+
+/** Preescucha: el plato preparado suena por encima, bajito, para encontrar la entrada. */
+export function escucharPreparado(activar) {
+  const libre = preparado();
+  if (!libre || encadenando) return false;
+  fijarGanancia(libre, activar ? PREESCUCHA : 0);
+  if (activar) {
+    motor?.despertar();
+    const promesa = libre.el.play();
+    if (promesa?.catch) promesa.catch(() => {});
+  } else {
+    libre.el.pause();
+  }
+  hooks.onPreparado?.(estadoPreparado());
+  return true;
+}
+
+/** Deja el plato libre otra vez. */
+export function soltarPreparado() {
+  const libre = preparado();
+  if (!libre || encadenando) return false;
+  libre.el.pause();
+  libre.el.removeAttribute('src');
+  libre.id = null;
+  if (motor) motor.limpiarPlato(libre.nodos);
+  platoConPreparada = null;
+  hooks.onPreparado?.(estadoPreparado());
+  return true;
+}
+
+export function estadoPreparado() {
+  const libre = preparado();
+  if (!libre) return { id: null, tiempo: 0, escuchando: false, listo: false };
+  return {
+    id: libre.id,
+    tiempo: libre.el.currentTime || 0,
+    escuchando: !libre.el.paused,
+    listo: libre.el.readyState >= 1,
+  };
+}
+
+/**
+ * El empujón manual: mueve la fase del plato que suena sin dar un salto.
+ *
+ * Es lo que hace un pinchadiscos con el dedo en el plato, y la única manera de
+ * corregir un desfase sin que se oiga un corte: se acelera o se frena un pelo
+ * el tiempo justo para recuperar los milisegundos que faltan.
+ */
+export function empujar(segundos, { plato: cual = 'activo' } = {}) {
+  const objetivo = cual === 'preparado' ? preparado() : plato();
+  if (!objetivo?.id || !Number.isFinite(segundos) || !segundos) return false;
+  const base = cual === 'preparado' ? 1 : tempo.velocidad;
+  if (cual === 'preparado' && objetivo.el.paused) {
+    // Parado no hay nada que empujar: se mueve y ya.
+    return moverPreparado((objetivo.el.currentTime || 0) + segundos);
+  }
+  const empuje = 0.06 * Math.sign(segundos);
+  const duracionEmpuje = Math.min(3, Math.abs(segundos) / (base * 0.06));
+  objetivo.el.playbackRate = base * (1 + empuje);
+  clearTimeout(objetivo.empujando);
+  objetivo.empujando = setTimeout(() => {
+    objetivo.el.playbackRate = cual === 'preparado' ? 1 : tempo.velocidad;
+  }, duracionEmpuje * 1000);
+  return true;
 }
 
 /* ------------------------------------------------------------------- tempo */
@@ -282,6 +422,7 @@ function cancelarFundido() {
   if (!encadenando) return;
   encadenando = false;
   mezclaActual += 1;
+  platoConPreparada = null;
   const otroPlato = otro();
   otroPlato.el.pause();
   otroPlato.el.removeAttribute('src');
@@ -310,6 +451,8 @@ export function mezclar(id, plan, { estirarTiempo = true } = {}) {
   if (!track || !entrante.nodos || !saliente.nodos) return false;
 
   encadenando = true;
+  // Lo que estaba preparado pasa a sonar: deja de ser «lo que preparas».
+  if (platoConPreparada === 1 - activo) platoConPreparada = null;
   // Cada mezcla lleva su número. Una transición dura quince segundos y deja
   // temporizadores por el camino; si se corta a la mitad y se lanza otra, los
   // de la primera llegan tarde y pararían el plato de la segunda.
@@ -317,8 +460,13 @@ export function mezclar(id, plan, { estirarTiempo = true } = {}) {
   const mia = mezclaActual;
   const esMia = () => encadenando && mezclaActual === mia;
 
-  entrante.id = id;
-  entrante.el.src = window.pletina.media.track(id);
+  // Si ya estaba preparado, no se vuelve a cargar: el archivo está abierto y
+  // con búfer, y entrar sin el retardo de una carga es media mezcla ganada.
+  const yaPreparado = entrante.id === id && entrante.el.currentSrc && entrante.el.readyState >= 1;
+  if (!yaPreparado) {
+    entrante.id = id;
+    entrante.el.src = window.pletina.media.track(id);
+  }
 
   // La mezcla manda sobre el tempo: a partir de aquí el reproductor va al que
   // ha decidido el plan, y el panel de sonido lo refleja.

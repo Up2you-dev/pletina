@@ -3,7 +3,7 @@ import { ICO } from './icons.js';
 import { analizada } from '../../shared/beats.js';
 import { formatTime, formatTotal, formatWhen, plural } from '../../shared/format.js';
 import { ORDEN_ALBUMES, ORDEN_ARTISTAS, SORT_KEYS } from '../../shared/sorting.js';
-import { pintarMezclador } from './vista-mezclador.js';
+import { montarCabina, pintarMezclador } from './vista-mezclador.js';
 import {
   actionTargets,
   albumByKey,
@@ -278,6 +278,9 @@ export function renderStage() {
 
   if (view.type === 'mezclador') {
     body.innerHTML = pintarMezclador();
+    // La cabina no es HTML y ya está: hay cuatro lienzos que pintar sesenta
+    // veces por segundo y un arrastre que enganchar.
+    montarCabina(body);
     return;
   }
 
@@ -399,6 +402,14 @@ export function trackMenu(anchor, id) {
   if (ids.some((each) => getTrack(each)?.coverId)) {
     items.push({ key: 'nocover', label: 'Quitar la carátula', icon: ICO.x, run: () => actions.clearCover(ids) });
   }
+  if (!many) {
+    items.push({
+      key: 'platoB',
+      label: 'Preparar en el plato B',
+      icon: ICO.waves,
+      run: () => actions.cargarEnPlatoB(id),
+    });
+  }
   items.push({
     key: 'analizar',
     label: many ? `Analizar tempo y tonalidad de ${ids.length}…` : 'Analizar tempo y tonalidad',
@@ -465,6 +476,12 @@ export function bindStage(handlers) {
   });
 
   body.addEventListener('click', (event) => {
+    const cargar = event.target.closest('[data-cargar]');
+    if (cargar) return actions.cargarEnPlatoB(cargar.dataset.cargar);
+
+    const nivel = event.target.closest('[data-zoom]');
+    if (nivel) return actions.mezclador('zoom', nivel.dataset.zoom);
+
     const mezcla = event.target.closest('[data-mezcla]');
     if (mezcla) return actions.mezclador(mezcla.dataset.mezcla, mezcla.dataset.valor ?? mezcla.dataset.id);
 
