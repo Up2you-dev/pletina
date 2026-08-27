@@ -43,7 +43,9 @@ import {
   margenAutomatico,
   mezclarAhora,
   platoB,
+  ponerElUnoEnB,
   prepararPlan,
+  saltarCompasesEnB,
   soltarPlatoB,
   terminarMezcla,
 } from './mezclador.js';
@@ -653,6 +655,22 @@ const actions = {
         soltarPlatoB();
         renderStage();
         return;
+      case 'compas-atras':
+        saltarCompasesEnB(-1);
+        return;
+      case 'compas-adelante':
+        saltarCompasesEnB(1);
+        return;
+      case 'poner-uno': {
+        ponerElUnoEnB().then((resultado) => {
+          if (!resultado.ok) toast(resultado.motivo);
+          else {
+            toast('Rejilla corregida: el uno queda donde lo has puesto.');
+            renderStage();
+          }
+        });
+        return;
+      }
       case 'analizar-par': {
         const preparado = prepararPlan();
         const ids = [preparado?.saliente?.id, preparado?.entrante?.id].filter(Boolean);

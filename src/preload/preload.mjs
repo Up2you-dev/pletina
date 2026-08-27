@@ -47,6 +47,8 @@ contextBridge.exposeInMainWorld('pletina', {
     analysis: (id, datos) => invoke('tracks:analysis', id, datos),
     /** La forma de onda ya calculada, en binario. `null` si no está analizada. */
     onda: (id) => invoke('tracks:onda', id),
+    /** Mueve el «uno» de la rejilla sin tocar el resto del análisis. */
+    rejilla: (id, cambio) => invoke('tracks:rejilla', id, cambio),
     cover: (ids, opciones) => invoke('tracks:cover', ids, opciones),
     coverFromPath: (ids, imagePath, opciones) => invoke('tracks:coverFromPath', ids, imagePath, opciones),
     clearCover: (ids) => invoke('tracks:clearCover', ids),

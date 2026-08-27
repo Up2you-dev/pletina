@@ -39,6 +39,13 @@ dos platos con sus ondas, uno encima de otro, y tú decidiendo qué entra.
 - **Entrar sin retardo.** Al mezclar, si el plato ya estaba preparado no se
   vuelve a abrir el archivo: entra con el búfer hecho, que es de las cosas que
   más ayudaban a que no cuadrase.
+- **Compás adelante y compás atrás**: el plato B se mueve un compás exacto, no
+  «un poco».
+- **«El uno está aquí»**: corrige la rejilla desde la cabina. El detector
+  acierta casi siempre con el pulso y falla más con el uno, y con el uno mal la
+  mezcla entra a contratiempo por muy afinado que esté el tempo. Se coloca el
+  plato donde de verdad empieza el compás, se pulsa, y queda corregido sin
+  volver a analizar nada.
 - **Qué pinchar después.** Un abanico de la biblioteca ordenado como lo pensaría
   un pinchadiscos: primero lo que encaja de tonalidad, luego lo que menos hay
   que estirar, y fuera lo que no se puede cuadrar sin que se note.
@@ -53,7 +60,7 @@ dos platos con sus ondas, uno encima de otro, y tú decidiendo qué entra.
   borra la carpeta, basta con volver a analizar.
 - La cabina se pinta con su propio bucle a la frecuencia de la pantalla, y se
   para sola al salir de ella.
-- 268 pruebas. Las cuentas del visor —qué tramo se ve, qué columna le toca a
+- 270 pruebas. Las cuentas del visor —qué tramo se ve, qué columna le toca a
   cada marco, dónde caen las líneas y cuánto desfase hay entre dos rejillas—
   están separadas del dibujo justamente para poder probarlas sin pantalla.
 - `npm run test:mezcla` comprueba además que el análisis deja la onda guardada,

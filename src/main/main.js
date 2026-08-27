@@ -439,6 +439,7 @@ function registerIpc() {
     return library.setAnalysis(id, { ...resto, onda });
   });
   handle('tracks:onda', (id) => ondasStore.leer(id));
+  handle('tracks:rejilla', (id, cambio) => library.ajustarRejilla(id, cambio ?? {}));
   handle('tracks:cover', async (ids, opciones) => {
     const lista = Array.isArray(ids) ? ids : [];
     if (!lista.length) return { ok: false };

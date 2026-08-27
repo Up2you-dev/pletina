@@ -417,6 +417,35 @@ export function createLibrary({ store, covers, escritor = escritorPorDefecto, on
     });
   }
 
+  /**
+   * Corrige la rejilla a mano sin tocar el resto del análisis.
+   *
+   * El detector acierta casi siempre con el pulso y falla más con el «uno»:
+   * hay canciones cuyo primer golpe fuerte no es el que parece. Esto deja
+   * moverlo desde la cabina sin volver a analizar nada.
+   */
+  function ajustarRejilla(id, cambio = {}) {
+    return store.update((d) => {
+      const track = d.tracks[id];
+      if (!track?.rejilla) return null;
+      const offset = Number(cambio.offset);
+      const tiempoFuerte = Number(cambio.tiempoFuerte);
+      const compasFuerte = Number(cambio.compasFuerte);
+      track.rejilla = {
+        ...track.rejilla,
+        offset: Number.isFinite(offset) ? Math.max(0, offset) : track.rejilla.offset,
+        tiempoFuerte: Number.isFinite(tiempoFuerte)
+          ? Math.min(7, Math.max(0, Math.round(tiempoFuerte)))
+          : track.rejilla.tiempoFuerte,
+        compasFuerte: Number.isFinite(compasFuerte)
+          ? Math.min(15, Math.max(0, Math.round(compasFuerte)))
+          : track.rejilla.compasFuerte,
+        aMano: true,
+      };
+      return track;
+    });
+  }
+
   /** Pone una imagen como carátula. Vive en la caché; al archivo solo si se pide. */
   async function setCover(ids, imagePath) {
     const buffer = await readFile(imagePath);
@@ -620,6 +649,7 @@ export function createLibrary({ store, covers, escritor = escritorPorDefecto, on
     patchTrack,
     editTracks,
     setAnalysis,
+    ajustarRejilla,
     escribirEnArchivos,
     setCover,
     clearCover,

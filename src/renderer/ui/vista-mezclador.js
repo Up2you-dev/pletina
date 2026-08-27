@@ -131,6 +131,12 @@ export function pintarMezclador() {
       <div class="deck-botones">
         <button class="btn pequeno${platoB?.escuchando ? ' on' : ''}" data-mezcla="preescuchar"
           ${platoB ? '' : 'disabled'}>${ICO.vol}Preescuchar</button>
+        <button class="btn pequeno" data-mezcla="compas-atras"${platoB ? '' : ' disabled'}
+          title="Un compás atrás">${ICO.prev}Compás</button>
+        <button class="btn pequeno" data-mezcla="compas-adelante"${platoB ? '' : ' disabled'}
+          title="Un compás adelante">Compás${ICO.next}</button>
+        <button class="btn pequeno" data-mezcla="poner-uno"${platoB ? '' : ' disabled'}
+          title="Mover el «uno» de la rejilla a donde está el plato">${ICO.check}El uno está aquí</button>
         <button class="btn btn-ghost pequeno" data-mezcla="soltar-b"${platoB ? '' : ' disabled'}>
           ${ICO.x}Quitar</button>
       </div>
@@ -207,8 +213,8 @@ const lienzo = (raiz, nombre) => raiz.querySelector(`[data-onda="${nombre}"]`);
  * El plato A es lo que suena, con o sin plan; el B es lo que hay preparado o,
  * durante una transición, la que está entrando.
  */
-export function fichaDelPlato(cual) {
-  const { platoB, enCurso } = estadoDeMezcla();
+export function fichaDelPlato(cual, estado = estadoDeMezcla()) {
+  const { platoB, enCurso } = estado;
   if (cual === 'b') return platoB?.ficha ?? enCurso?.entrante ?? null;
   return enCurso?.saliente ?? fichaDeMezcla(state.currentId);
 }
@@ -218,9 +224,12 @@ function pintarCuadro(raiz) {
   const platos = estadoDePlatos();
   const activo = platoActivo();
   const preparado = estadoPreparado();
-  const { enCurso } = estadoDeMezcla();
+  // Un solo vistazo al estado por cuadro: preguntarlo tres veces sesenta veces
+  // por segundo es preparar ciento ochenta planes de mezcla que nadie usa.
+  const estado = estadoDeMezcla();
+  const { enCurso } = estado;
 
-  const fichas = { a: fichaDelPlato('a'), b: fichaDelPlato('b') };
+  const fichas = { a: fichaDelPlato('a', estado), b: fichaDelPlato('b', estado) };
   const enPlato = {
     a: platos.find((p) => p.id && p.id === fichas.a?.id),
     b: platos.find((p) => p.id && p.id === fichas.b?.id),
@@ -267,7 +276,7 @@ function pintarCuadro(raiz) {
     reloj.textContent = ficha?.duracion ? `-${formatTime(Math.max(0, queda))}` : '';
     reloj.classList.toggle('apurado', ficha?.duracion > 0 && queda < 30);
   }
-  refrescarProgreso();
+  refrescarProgreso(enCurso);
 }
 
 /** El desfase entre las dos rejillas: el número que mira un pinchadiscos. */
@@ -393,8 +402,8 @@ export const zoomActual = () => zoom;
 /* --------------------------------------------------------------- progreso */
 
 /** La rejilla de compases de la transición, si hay una en marcha. */
-export function refrescarProgreso() {
-  const { enCurso } = estadoDeMezcla();
+export function refrescarProgreso(mezcla) {
+  const enCurso = mezcla === undefined ? estadoDeMezcla().enCurso : mezcla;
   const rejilla = document.querySelector('#rejilla-compases');
   if (!rejilla || !enCurso) return;
   const { plan } = enCurso;

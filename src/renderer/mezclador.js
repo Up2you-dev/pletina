@@ -1,5 +1,7 @@
 import { LIMITE_AJUSTE, describirPlan, planDeMezcla } from '../shared/mezcla.js';
-import { analizada, rejillaVigente } from '../shared/beats.js';
+import {
+  analizada, duracionDeCompases, rejillaVigente, siguienteCompas,
+} from '../shared/beats.js';
 import { tonalidadesCompatibles } from '../shared/musica.js';
 import { advance } from '../shared/queue.js';
 import { getTrack, state } from './state.js';
@@ -212,6 +214,52 @@ export function platoB() {
   const preparado = player.estadoPreparado();
   if (!preparado.id) return null;
   return { ...preparado, ficha: fichaDeMezcla(preparado.id) };
+}
+
+/**
+ * Salta el plato B compases enteros. Con la rejilla puesta es exacto: no se
+ * mueve «un poco», se mueve un compás.
+ */
+export function saltarCompasesEnB(compases) {
+  const actual = platoB();
+  if (!actual?.ficha) return false;
+  const rejilla = actual.ficha.rejilla;
+  const compas = rejilla?.bpm
+    ? duracionDeCompases(rejilla.bpm, 1, rejilla.tiemposPorCompas ?? 4)
+    : 2;
+  const hecho = player.moverPreparado(Math.max(0, actual.tiempo + compas * compases));
+  if (hecho) avisar();
+  return hecho;
+}
+
+/**
+ * Mueve el «uno» de la rejilla al punto donde está parado el plato B.
+ *
+ * El detector acierta casi siempre con el pulso y falla más con el uno: hay
+ * canciones cuyo primer golpe fuerte no es el que parece, y con el uno mal la
+ * mezcla entra a contratiempo por muy afinado que esté el tempo. Esto lo
+ * arregla mirando la onda, que es como se arregla en una cabina.
+ */
+export async function ponerElUnoEnB() {
+  const actual = platoB();
+  const rejilla = actual?.ficha?.rejilla;
+  if (!rejilla?.bpm) return { ok: false, motivo: 'Esa canción no tiene rejilla que mover.' };
+
+  const periodo = 60 / rejilla.bpm;
+  const compas = periodo * (rejilla.tiemposPorCompas ?? 4);
+  // El desfase se guarda dentro de un tiempo, y el uno pasa a ser este punto.
+  const offset = ((actual.tiempo % periodo) + periodo) % periodo;
+  await window.pletina.track.rejilla(actual.id, { offset, tiempoFuerte: 0, compasFuerte: 0 });
+  const track = getTrack(actual.id);
+  if (track?.rejilla) {
+    track.rejilla = {
+      ...track.rejilla, offset, tiempoFuerte: 0, compasFuerte: 0, aMano: true,
+    };
+  }
+  // Y el plato se coloca en ese mismo uno, que es donde el usuario lo ha puesto.
+  player.moverPreparado(siguienteCompas(actual.tiempo - compas / 2, track?.rejilla ?? rejilla));
+  avisar();
+  return { ok: true };
 }
 
 /** ¿Se puede mezclar ahora mismo? */

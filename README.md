@@ -58,7 +58,7 @@ npm run dist:win     # y esto te deja el instalador en release\
 Y para lo demás:
 
 ```bash
-npm run verify       # lint + 268 pruebas + arranque real, arrastre, mezcla y cadena
+npm run verify       # lint + 270 pruebas + arranque real, arrastre, mezcla y cadena
 npm run dist:mac     # .dmg (arm64 + x64)  · hay que ejecutarlo EN un Mac
 npm run dist:linux   # AppImage + .deb
 ```
@@ -171,6 +171,14 @@ de mandar: eso es lo que separa una cabina de una lista de reproducción.
 empujón —acelerar o frenar un pelo durante un momento— porque saltar sonaría a
 corte; en el que preparas, que está parado, se mueve y ya. Con `,` y `.` se hace
 lo mismo a golpe de tecla, y con `M` se lanza la mezcla.
+
+**Y dos herramientas de precisión más.** *Compás adelante* y *compás atrás*
+mueven el plato B un compás exacto, no «un poco». Y *el uno está aquí* corrige
+la rejilla: el detector acierta casi siempre con el pulso y falla más con el
+uno —hay canciones cuyo primer golpe fuerte no es el que parece—, y con el uno
+mal la mezcla entra a contratiempo por muy afinado que esté el tempo. Se coloca
+el plato donde de verdad empieza el compás, se pulsa, y la rejilla se queda
+corregida para siempre sin volver a analizar nada.
 
 **Qué pinchar después.** Un abanico de la biblioteca ordenado como lo pensaría
 un pinchadiscos: primero lo que encaja de tonalidad, luego lo que menos hay que
@@ -291,7 +299,7 @@ y los empaqueta en `.ico` y `.icns`).
 
 ## Pruebas
 
-- `npm test` — 268 pruebas sobre la lógica pura (cola, orden y búsqueda,
+- `npm test` — 270 pruebas sobre la lógica pura (cola, orden y búsqueda,
   formato, `Range`), sobre el almacén y la biblioteca contra archivos de verdad
   en carpetas temporales —análisis incremental, ausencias, discos desconectados,
   correcciones de etiquetas, listas y M3U de ida y vuelta— y de contrato entre

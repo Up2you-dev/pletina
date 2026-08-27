@@ -140,7 +140,7 @@ export function pintarZoom(canvas, ondas, {
 
   if (ondas) {
     const opciones = { ...vista, fps: ondas.fps };
-    ctx.globalAlpha = apagado ? 0.5 : 1;
+    ctx.globalAlpha = apagado ? 0.72 : 1;
     pintarBandas(ctx, {
       grave: franja(ondas.grave, opciones),
       medio: franja(ondas.medio, opciones),

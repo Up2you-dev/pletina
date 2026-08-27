@@ -570,6 +570,28 @@ describe('análisis y rejilla', () => {
     expect(library.listTracks()[0].rejilla.version).toBe(1);
   });
 
+  it('el uno se puede mover a mano sin tocar el resto del análisis', () => {
+    const id = library.listTracks()[0].id;
+    library.setAnalysis(id, { bpm: 127.312, key: 'Am', tonalidad: 'La menor', rejilla });
+
+    library.ajustarRejilla(id, { offset: 0.12, tiempoFuerte: 0, compasFuerte: 2 });
+
+    const track = library.listTracks()[0];
+    expect(track.rejilla).toMatchObject({
+      offset: 0.12, tiempoFuerte: 0, compasFuerte: 2, aMano: true, bpm: 127.312,
+    });
+    // Y el resto del análisis sigue donde estaba.
+    expect(track.key).toBe('Am');
+    expect(track.bpm).toBeCloseTo(127.312, 3);
+  });
+
+  it('mover el uno de una canción sin rejilla no hace nada', () => {
+    const id = library.listTracks()[0].id;
+    library.setAnalysis(id, { bpm: 120 });
+    library.ajustarRejilla(id, { offset: 1 });
+    expect(library.listTracks()[0].rejilla).toBe(null);
+  });
+
   it('sin rejilla no inventa una', () => {
     const id = library.listTracks()[0].id;
     library.setAnalysis(id, { bpm: 120 });
