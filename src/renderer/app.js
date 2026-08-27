@@ -1121,6 +1121,10 @@ const ATAJOS = new Map([
  * dejaba media aplicación sin teclado: mueves el volumen o un mando del
  * ecualizador con el ratón, el foco se queda ahí, y a partir de ese momento no
  * responde ni el espacio. La tecla no estaba rota; estaba secuestrada.
+ *
+ * Y `matches` con interrogación porque no todo lo que recibe una tecla es un
+ * elemento —el documento también, y ahí no existe—: sin eso, el manejador
+ * reventaba antes de mirar la tecla y no funcionaba ninguna.
  */
 function escribiendo(elemento) {
   if (!elemento) return false;
@@ -1136,9 +1140,6 @@ const DEL_MANDO = new Set([' ', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown
 function onKeyDown(event) {
   if (isDialogOpen()) return;
   const target = event.target;
-  // `matches` con interrogación porque no todo lo que recibe una tecla es un
-  // elemento: el documento también, y ahí no existe. Sin esto, el manejador
-  // reventaba antes de mirar la tecla y no funcionaba ni una.
   if (escribiendo(target)) {
     if (event.key === 'Escape' && target.id === 'q') {
       target.value = '';
