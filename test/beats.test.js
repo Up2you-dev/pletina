@@ -4,6 +4,8 @@ import {
   REJILLA_VERSION,
   ajustarRejilla,
   analizada,
+  anclarElUno,
+  tempoDeGolpes,
   detectarCompas,
   detectarFrase,
   duracionDeCompases,
@@ -298,6 +300,89 @@ describe('primerSonido', () => {
   it('con silencio entero no se inventa una entrada', () => {
     const { energia, tasa: tasaEnv } = envolventes(new Float32Array(11025 * 3), 11025);
     expect(primerSonido(energia, tasaEnv)).toBe(0);
+  });
+});
+
+describe('tempoDeGolpes', () => {
+  const cada = (segundos, cuantos, desde = 0) => Array.from(
+    { length: cuantos }, (unused, i) => desde + i * segundos,
+  );
+
+  it('saca el tempo de unos golpecitos', () => {
+    expect(tempoDeGolpes(cada(0.5, 6)).bpm).toBeCloseTo(120, 3);
+    expect(tempoDeGolpes(cada(60 / 128, 8)).bpm).toBeCloseTo(128, 2);
+  });
+
+  it('aguanta un golpe tarde, que siempre lo hay', () => {
+    // Con la media, este golpe movería el tempo; con la mediana, no.
+    const golpes = [0, 0.5, 1, 1.62, 2, 2.5, 3];
+    expect(tempoDeGolpes(golpes).bpm).toBeCloseTo(120, 1);
+    // Pero se dice que la mano no iba firme.
+    expect(tempoDeGolpes(golpes).firme).toBe(false);
+    expect(tempoDeGolpes(cada(0.5, 6)).firme).toBe(true);
+  });
+
+  it('con menos de cuatro golpes no se pronuncia', () => {
+    expect(tempoDeGolpes(cada(0.5, 3))).toBe(null);
+    expect(tempoDeGolpes([])).toBe(null);
+    expect(tempoDeGolpes(null)).toBe(null);
+  });
+
+  it('ignora los golpes absurdos: dobles y pausas para pensar', () => {
+    // Dos golpes pegados y una pausa de cinco segundos no son tempo.
+    const golpes = [0, 0.01, 0.5, 1, 1.5, 2, 7, 7.5];
+    expect(tempoDeGolpes(golpes).bpm).toBeCloseTo(120, 1);
+  });
+
+  it('fuera del rango de lo que se pincha, no contesta', () => {
+    expect(tempoDeGolpes(cada(1.5, 6))).toBe(null);
+    expect(tempoDeGolpes(cada(0.25, 6))).toBe(null);
+  });
+
+  it('recuerda dónde ha caído el primer golpe, que es el uno', () => {
+    expect(tempoDeGolpes(cada(0.5, 6, 3.2)).desde).toBeCloseTo(3.2, 6);
+  });
+});
+
+describe('anclarElUno', () => {
+  const rejilla = { bpm: 120, tiemposPorCompas: 4 };
+
+  it('deja un uno exactamente donde se le pide', () => {
+    // A 120, un tiempo es medio segundo y un compás dos. Se pide el uno en el
+    // segundo 7,25: tiene que caer ahí, no en el 6,25 ni en el 7,75.
+    const { offset, tiempoFuerte } = anclarElUno(7.25, rejilla);
+    const periodo = 60 / rejilla.bpm;
+    const primerUno = offset + tiempoFuerte * periodo;
+    const compas = periodo * 4;
+    const resto = (((7.25 - primerUno) % compas) + compas) % compas;
+    expect(Math.min(resto, compas - resto)).toBeLessThan(0.002);
+  });
+
+  it('y lo deja en cualquiera de los cuatro tiempos, no solo en uno de cada cuatro', () => {
+    // Este es el fallo que tenía: guardar solo el desfase dentro de un tiempo
+    // pone un GOLPE donde se pide, pero el UNO caía donde tocara.
+    const periodo = 60 / rejilla.bpm;
+    const compas = periodo * 4;
+    for (const tiempo of [10, 10.5, 11, 11.5, 3.14, 27.9]) {
+      const { offset, tiempoFuerte } = anclarElUno(tiempo, rejilla);
+      const primerUno = offset + tiempoFuerte * periodo;
+      const resto = (((tiempo - primerUno) % compas) + compas) % compas;
+      expect(Math.min(resto, compas - resto)).toBeLessThan(0.002);
+    }
+  });
+
+  it('respeta compases que no son de cuatro', () => {
+    const { offset, tiempoFuerte } = anclarElUno(5, { bpm: 90, tiemposPorCompas: 3 });
+    expect(tiempoFuerte).toBeLessThan(3);
+    const periodo = 60 / 90;
+    const compas = periodo * 3;
+    const resto = (((5 - (offset + tiempoFuerte * periodo)) % compas) + compas) % compas;
+    expect(Math.min(resto, compas - resto)).toBeLessThan(0.002);
+  });
+
+  it('sin tempo no se inventa nada', () => {
+    expect(anclarElUno(4, { bpm: 0 })).toBe(null);
+    expect(anclarElUno(4, {})).toBe(null);
   });
 });
 

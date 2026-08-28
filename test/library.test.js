@@ -639,6 +639,45 @@ describe('análisis y rejilla', () => {
     expect(library.listTracks()[0].rejilla.version).toBeGreaterThanOrEqual(3);
   });
 
+  it('una canción sin rejilla la recibe si le marcas el tempo a mano', () => {
+    // Es la salida cuando el análisis no encuentra pulso y la persona sí lo
+    // oye: sin esto, esa canción se quedaba sin poder mezclarse nunca.
+    const id = library.listTracks()[0].id;
+    library.setAnalysis(id, { bpm: 0 });
+    expect(library.listTracks()[0].rejilla).toBe(null);
+
+    library.ajustarRejilla(id, { bpm: 126.5, offset: 0.8, tiempoFuerte: 2 });
+
+    const track = library.listTracks()[0];
+    expect(track.rejilla).toMatchObject({
+      bpm: 126.5, offset: 0.8, tiempoFuerte: 2, aMano: true,
+    });
+    // Y cuenta como rejilla utilizable, que para eso se ha puesto.
+    expect(track.rejilla.version).toBeGreaterThanOrEqual(3);
+    expect(track.bpm).toBeCloseTo(126.5, 3);
+  });
+
+  it('pero no se inventa una rejilla sin tempo que ponerle', () => {
+    const id = library.listTracks()[0].id;
+    library.setAnalysis(id, { bpm: 0 });
+    library.ajustarRejilla(id, { offset: 1.5 });
+    expect(library.listTracks()[0].rejilla).toBe(null);
+  });
+
+  it('un tempo puesto a mano manda sobre el que midió el análisis', () => {
+    const id = library.listTracks()[0].id;
+    library.setAnalysis(id, { bpm: 127.312, rejilla: { ...rejilla, fuerza: 0.1 } });
+
+    library.ajustarRejilla(id, { bpm: 140 });
+
+    const track = library.listTracks()[0];
+    expect(track.rejilla.bpm).toBeCloseTo(140, 3);
+    expect(track.bpm).toBeCloseTo(140, 3);
+    // Y su confianza pasa a ser la de quien lo ha puesto.
+    expect(track.rejilla.fuerza).toBe(1);
+    expect(track.rejilla.deriva).toBe(0);
+  });
+
   it('mover el uno de una canción sin rejilla no hace nada', () => {
     const id = library.listTracks()[0].id;
     library.setAnalysis(id, { bpm: 120 });

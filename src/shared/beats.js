@@ -573,6 +573,66 @@ export function rejillaCompleta(muestras, tasa, bpmAprox, { desde = 0, tiemposPo
 
 const redondear = (v) => Math.round(v * 1000) / 1000;
 
+/**
+ * El tempo que marca una persona dando golpecitos.
+ *
+ * Es la salida cuando el análisis no acierta, y hay música con la que no
+ * acierta nadie: un directo, una grabación vieja, algo tocado a mano. Se usa la
+ * MEDIANA de los intervalos y no la media porque un golpe tarde estropea una
+ * media y no estropea una mediana, y quien marca el tempo siempre da un golpe
+ * tarde. Con menos de cuatro golpes no se contesta: dos personas dando dos
+ * palmadas sacan cualquier número.
+ */
+export function tempoDeGolpes(instantes, { minimo = 4 } = {}) {
+  const golpes = (instantes ?? []).filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
+  if (golpes.length < minimo) return null;
+  const huecos = [];
+  for (let i = 1; i < golpes.length; i += 1) {
+    const hueco = golpes[i] - golpes[i - 1];
+    // Ni dos golpes pegados ni una pausa para pensar: eso no es marcar tempo.
+    if (hueco > 0.2 && hueco < 2) huecos.push(hueco);
+  }
+  if (huecos.length < minimo - 1) return null;
+  huecos.sort((a, b) => a - b);
+  const mediana = huecos.length % 2
+    ? huecos[(huecos.length - 1) / 2]
+    : (huecos[huecos.length / 2 - 1] + huecos[huecos.length / 2]) / 2;
+  const bpm = 60 / mediana;
+  if (!(bpm >= BPM_MIN && bpm <= BPM_MAX)) return null;
+  // Cuánto se parecen los golpes entre sí: si bailan mucho, el número tampoco
+  // vale, y vale más decirlo que dar un tempo inventado con aplomo.
+  const desvio = huecos.reduce((suma, h) => suma + Math.abs(h - mediana), 0) / huecos.length;
+  return {
+    bpm: Math.round(bpm * 1000) / 1000,
+    golpes: golpes.length,
+    // El primer golpe es donde el usuario ha oído el uno.
+    desde: golpes[0],
+    firme: desvio / mediana < 0.08,
+  };
+}
+
+/**
+ * Mueve el «uno» de la rejilla al instante que se le diga.
+ *
+ * Parece una resta y no lo es. El desfase de la rejilla se guarda dentro de un
+ * tiempo, así que dejarlo en `tiempo % periodo` solo garantiza que ahí caiga un
+ * GOLPE, no que caiga el UNO: el uno está cada cuatro golpes, y cuál de los
+ * cuatro es lo dice `tiempoFuerte`. Sin ponerlo, el uno acababa a uno, dos o
+ * tres tiempos de donde lo había puesto el usuario —tres veces de cada
+ * cuatro—, que es exactamente la sensación de «no funciona bien».
+ */
+export function anclarElUno(tiempo, { bpm, tiemposPorCompas = 4 } = {}) {
+  if (!bpm) return null;
+  const periodo = 60 / bpm;
+  const offset = ((tiempo % periodo) + periodo) % periodo;
+  const golpes = Math.round((tiempo - offset) / periodo);
+  const tiempos = Math.max(1, tiemposPorCompas);
+  return {
+    offset: redondear(offset),
+    tiempoFuerte: ((golpes % tiempos) + tiempos) % tiempos,
+  };
+}
+
 /** Instante del siguiente golpe a partir de un momento dado. */
 export function siguienteGolpe(segundo, { bpm, offset = 0 }) {
   if (!bpm) return segundo;

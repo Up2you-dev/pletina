@@ -368,11 +368,16 @@ select.sort:hover{border-color:var(--muted-2)}
   color:var(--accent-ink); background:var(--accent); border-radius:99px; padding:3px 9px; flex:none}
 .deck.deck-b .deck-cab .papel{background:var(--panel-3); color:var(--muted)}
 .deck-caratula{width:34px; height:34px; border-radius:var(--r-sm); flex:none; object-fit:cover; background:var(--panel-3)}
-.deck-texto{display:flex; flex-direction:column; gap:0; flex:1 1 120px; min-width:70px}
+.deck-texto{display:flex; flex-direction:column; gap:0; flex:1 1 180px; min-width:110px}
 .deck-texto strong{font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 .deck-texto span{font-size:12.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
-.deck-datos{font-family:var(--ff-mono); font-size:11.5px; color:var(--muted-2); white-space:nowrap;
-  flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis}
+/* Los datos van bajo el título, con el resto de lo que dice la canción: en la
+   misma línea que los botones se quedaban sin sitio y salían cortados a «1.». */
+/* Con `.deck-texto` delante a propósito: `.deck-texto span` recorta con puntos
+   suspensivos y gana por especificidad, que es lo que dejaba los datos en
+   «126,0 bpm · Re menor · a su …». */
+.deck-texto .deck-datos{font-family:var(--ff-mono); font-size:11.5px; color:var(--muted-2);
+  line-height:1.45; white-space:normal; overflow:visible; text-overflow:clip}
 .deck-vacio{color:var(--muted-2); font-size:13.5px; flex:1}
 .deck-reloj{font-family:var(--ff-mono); font-size:13px; color:var(--muted); flex:none; min-width:44px; text-align:right}
 .deck-reloj.apurado{color:var(--signal)}
@@ -414,7 +419,9 @@ select.sort:hover{border-color:var(--muted-2)}
 .mezcla-en-curso p{margin:0; font-size:13px; color:var(--muted)}
 
 .candidatos{display:grid; gap:8px}
-.candidatos-cab{display:flex; align-items:baseline; gap:12px}
+.candidatos-cab{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap}
+.candidatos-cab .etiqueta{white-space:nowrap}
+.candidatos-cab .hint{flex:1 1 220px; min-width:0}
 .candidatos-lista{display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:8px;
   max-height:240px; overflow:auto; align-content:start}
 .candidato{display:flex; align-items:center; gap:10px; text-align:left; padding:8px 10px; min-width:0;

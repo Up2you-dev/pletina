@@ -91,13 +91,17 @@ function cabeceraDeck(ficha, papel) {
     <span class="deck-texto">
       <strong>${esc(ficha.titulo)}</strong>
       <span>${esc(ficha.artista)}</span>
+      <span class="deck-datos" data-datos="${esc(papel[0])}">${datosDe(ficha)}</span>
     </span>
-    <span class="deck-datos" data-datos="${esc(papel[0])}">${datosDe(ficha)}</span>
     <span class="deck-reloj" data-reloj="${esc(papel[0])}"></span>
-    <button class="btn btn-ghost pequeno" data-mezcla="analizar" data-id="${esc(ficha.id)}"
-      title="Tempo, tonalidad y rejilla de compases">
-      ${ICO.waves}${ficha.analizada || ficha.sinPulso ? 'Volver a analizar' : 'Analizar'}
-    </button>
+    ${ficha.analizada || ficha.sinPulso
+    // Ya analizada: el botón se queda en icono. Sigue estando —es el que se
+    // busca cuando algo no cuadra— pero no le come el sitio a los datos, que
+    // es lo que se mira todo el rato.
+    ? `<button class="icon-btn" data-mezcla="analizar" data-id="${esc(ficha.id)}"
+        title="Volver a analizar esta canción" aria-label="Volver a analizar esta canción">${ICO.waves}</button>`
+    : `<button class="btn btn-ghost pequeno" data-mezcla="analizar" data-id="${esc(ficha.id)}"
+        title="Tempo, tonalidad y rejilla de compases">${ICO.waves}Analizar</button>`}
   </header>`;
 }
 
@@ -188,6 +192,8 @@ export function pintarMezclador() {
           title="Un compás adelante">Compás${ICO.next}</button>
         <button class="btn pequeno" data-mezcla="poner-uno"${platoB ? '' : ' disabled'}
           title="Mover el «uno» de la rejilla a donde está el plato">${ICO.check}El uno está aquí</button>
+        <button class="btn pequeno" data-mezcla="marcar-tempo"${platoB ? '' : ' disabled'}
+          title="Dar golpecitos al ritmo de la canción para ponerle el tempo a mano">${ICO.waves}Marcar tempo</button>
         <button class="btn pequeno" data-mezcla="octava" data-valor="2"${platoB?.ficha?.rejilla ? '' : ' disabled'}
           title="Contar el tempo al doble, sin mover un golpe de sitio">×2</button>
         <button class="btn pequeno" data-mezcla="octava" data-valor="0.5"${platoB?.ficha?.rejilla ? '' : ' disabled'}
@@ -382,7 +388,10 @@ function pintarDatosDelPlatoA(raiz, ficha, estado) {
     ficha.bpm ? `${conComa(ficha.bpm * estado.velocidad)} bpm` : 'sin tempo',
     ficha.tonalidad || ficha.key || 'sin tonalidad',
     ajuste ? formatPorcentaje(ajuste) : 'a su tempo',
-  ].join(' · ');
+    // Lo que dice de la rejilla también, que si no el bucle se lo comía en el
+    // primer cuadro y el aviso solo se veía un instante.
+    fiabilidad(ficha.rejilla, ficha),
+  ].filter(Boolean).join(' · ');
 }
 
 /**

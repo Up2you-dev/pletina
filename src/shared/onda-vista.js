@@ -66,8 +66,14 @@ export function lineasDeRejilla(rejilla, { desde, hasta, maximo = 512 } = {}) {
   if (!bpm || !(hasta > desde)) return [];
 
   const periodo = 60 / bpm;
-  const primero = Math.ceil((desde - offset) / periodo);
+  // Antes del segundo cero no hay canción, así que no hay compases: la vista
+  // ampliada se sale por la izquierda a propósito —para que la cabeza lectora
+  // siga en el centro— y ahí se dibujaban líneas y números de compases que no
+  // existen, algunos con número negativo.
+  const arranque = Math.max(0, desde);
+  const primero = Math.ceil((arranque - offset) / periodo);
   const ultimo = Math.floor((hasta - offset) / periodo);
+  if (ultimo < primero) return [];
   if (ultimo - primero > maximo) return [];
 
   const conFrase = fuerzaFrase > 0;

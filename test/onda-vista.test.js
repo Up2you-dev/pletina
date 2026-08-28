@@ -125,6 +125,19 @@ describe('lineasDeRejilla', () => {
     expect(lineas.filter((l) => l.tipo === 'golpe').every((l) => l.compas === null)).toBe(true);
   });
 
+  it('antes del segundo cero no hay compases que dibujar', () => {
+    // La vista ampliada se sale por la izquierda para que la cabeza siga en el
+    // centro, y ahí se pintaban líneas —y números negativos— de compases que
+    // no existen.
+    const lineas = lineasDeRejilla(rejilla, { desde: -4, hasta: 2 });
+    expect(lineas.every((l) => l.segundo >= 0)).toBe(true);
+    expect(lineas.every((l) => l.compas === null || l.compas >= 1)).toBe(true);
+  });
+
+  it('y si el tramo entero es anterior a la canción, no hay ninguna', () => {
+    expect(lineasDeRejilla(rejilla, { desde: -8, hasta: -1 })).toEqual([]);
+  });
+
   it('con un tramo enorme no devuelve diez mil líneas', () => {
     expect(lineasDeRejilla(rejilla, { desde: 0, hasta: 600 })).toEqual([]);
   });

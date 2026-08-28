@@ -442,7 +442,29 @@ export function createLibrary({ store, covers, escritor = escritorPorDefecto, on
   function ajustarRejilla(id, cambio = {}) {
     return store.update((d) => {
       const track = d.tracks[id];
-      if (!track?.rejilla) return null;
+      if (!track) return null;
+      const bpmAMano = Number(cambio.bpm);
+      // Una rejilla se puede poner desde cero: es la salida cuando el análisis
+      // no encuentra pulso y la persona sí lo oye. Sin esto, esa canción se
+      // quedaba sin poder mezclarse por mucho que su dueño supiera su tempo.
+      if (!track.rejilla) {
+        if (!(bpmAMano >= 20 && bpmAMano <= 400)) return null;
+        track.rejilla = {
+          bpm: 0,
+          offset: 0,
+          tiempoFuerte: 0,
+          fuerza: 0,
+          deriva: 0,
+          fuerzaCompas: 0,
+          compasFuerte: 0,
+          fuerzaFrase: 0,
+          compasesPorFrase: 4,
+          entrada: 0,
+          porBombo: false,
+          tiemposPorCompas: 4,
+          version: REJILLA_VERSION,
+        };
+      }
       const vieja = track.rejilla;
       const offset = Number(cambio.offset);
       const tiempoFuerte = Number(cambio.tiempoFuerte);
@@ -464,6 +486,16 @@ export function createLibrary({ store, covers, escritor = escritorPorDefecto, on
         // pendiente y borraría la corrección con su propia opinión.
         version: Math.max(Number(vieja.version) || 1, REJILLA_VERSION),
       };
+
+      // Un tempo puesto a mano manda sobre todo lo demás: lo ha marcado una
+      // persona oyendo la canción, que es mejor detector que cualquier medida.
+      if (bpmAMano >= 20 && bpmAMano <= 400) {
+        nueva.bpm = Math.round(bpmAMano * 1000) / 1000;
+        // Su confianza ya no es la que midió el análisis: es la de quien la ha
+        // puesto. Se marca como firme para que la cabina no la ponga en duda.
+        nueva.fuerza = 1;
+        nueva.deriva = 0;
+      }
 
       // Cambiar de octava no mueve ni un golpe de sitio: los golpes de antes
       // siguen siendo golpes, solo que ahora se cuentan al doble o a la mitad.

@@ -4,6 +4,55 @@ Las versiones siguen [SemVer](https://semver.org/lang/es/). Cada una se
 construye desde la pestaña *Actions* del repositorio; una etiqueta `v1.2.3`
 además publica los instaladores sueltos en la página de versiones.
 
+## 4.3.0 — 2026-08-28
+
+### El «uno» caía donde le parecía
+
+- **«El uno está aquí» acertaba una vez de cada cuatro.** Parece una resta y no
+  lo es: el desfase de la rejilla se guarda dentro de un tiempo, así que
+  dejarlo en «el segundo en el que está el plato» solo garantiza que ahí caiga
+  un **golpe**, no que caiga el **uno** —el uno está cada cuatro golpes, y cuál
+  de los cuatro es lo dice otro dato que no se estaba tocando—. Las otras tres
+  veces el uno acababa a uno, dos o tres tiempos de donde lo habías puesto, que
+  es exactamente la sensación de «esto no funciona bien». Ahora cae donde se
+  pone: medido en cuatro posiciones distintas, error de 0 ms en las cuatro.
+
+### Marcar el tempo a mano · *cherry pick*
+
+- **Cuatro golpecitos y la canción tiene tempo**, acierte o no el análisis. Es
+  la salida para la música con la que no acierta nadie: un directo, una
+  grabación vieja, algo tocado a mano. Botón «Marcar tempo» en el plato B y
+  tecla `T`. Usa la **mediana** de los intervalos y no la media, porque quien
+  marca un tempo siempre da un golpe tarde y una media se estropea con eso;
+  ignora los golpes dobles y las pausas para pensar, y si la mano bailaba lo
+  dice en vez de dar un número con aplomo.
+- **Una canción sin rejilla puede recibir una.** Antes, si el análisis no le
+  encontraba pulso, se quedaba sin poder mezclarse por mucho que tú supieras su
+  tempo. Ahora el tempo marcado a mano le crea la rejilla, y con «El uno está
+  aquí» queda completa. Un tempo puesto por una persona manda sobre lo medido.
+
+### Lo que la captura enseñaba
+
+- **Compases que no existen.** La vista ampliada se sale por la izquierda a
+  propósito —para que la cabeza lectora siga en el centro— y ahí se pintaban
+  líneas de compás y números **negativos**, de compases anteriores al segundo
+  cero. Ya no.
+- **Los datos del plato salían cortados** («126,0 bpm · Re menor · a su …»)
+  porque compartían línea con los botones y perdían el sitio; y porque una regla
+  de CSS más específica les ponía puntos suspensivos. Ahora van bajo el título,
+  con el resto de lo que dice la canción, y caben enteros.
+- **El aviso de fiabilidad duraba un cuadro**: el bucle que refresca el tempo
+  del plato A lo borraba sesenta veces por segundo. Ahora lo respeta.
+- El botón de volver a analizar del plato pasa a ser un icono con su etiqueta de
+  accesibilidad: sigue estando siempre, sin comerle el sitio a los datos.
+
+### Analizar, todo
+
+- **El botón de la cabina alcanza a toda la biblioteca.** Con algo pendiente
+  analiza lo que falta; con todo hecho ofrece rehacerla entera, preguntando
+  antes. Antes solo rehacía las dos canciones de los platos, que es justo lo que
+  no sirve cuando lo que no cuadra está en el resto.
+
 ## 4.2.1 — 2026-08-28
 
 - **El botón de analizar volvió a aparecer, y ahora no se va nunca.** En la

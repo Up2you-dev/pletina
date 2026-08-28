@@ -1,6 +1,6 @@
 import { LIMITE_AJUSTE, daTiempoAMezclar, describirPlan, planDeMezcla } from '../shared/mezcla.js';
 import {
-  analizada, duracionDeCompases, rejillaVigente, siguienteCompas,
+  analizada, anclarElUno, duracionDeCompases, rejillaVigente, siguienteCompas, tempoDeGolpes,
 } from '../shared/beats.js';
 import { tonalidadesCompatibles } from '../shared/musica.js';
 import { advance } from '../shared/queue.js';
@@ -91,6 +91,8 @@ export function entranteElegida() {
 
 /** Carga una canción en el plato B, por donde empiece a sonar de verdad. */
 export function cargarEnPlatoB(id, { en } = {}) {
+  // Los golpecitos eran para la canción de antes.
+  olvidarGolpes();
   const ficha = fichaDeMezcla(id);
   if (!ficha) return { ok: false, motivo: 'Esa canción ya no está.' };
   if (player.mezclando()) return { ok: false, motivo: 'Espera a que termine la mezcla.' };
@@ -293,19 +295,66 @@ export async function ponerElUnoEnB() {
 
   const periodo = 60 / rejilla.bpm;
   const compas = periodo * (rejilla.tiemposPorCompas ?? 4);
-  // El desfase se guarda dentro de un tiempo, y el uno pasa a ser este punto.
-  const offset = ((actual.tiempo % periodo) + periodo) % periodo;
-  await window.pletina.track.rejilla(actual.id, { offset, tiempoFuerte: 0, compasFuerte: 0 });
+  // El uno se ancla donde está el plato, y eso no es solo el desfase: hay que
+  // decir además cuál de los cuatro tiempos es el uno. Ver `anclarElUno`.
+  const anclado = anclarElUno(actual.tiempo, rejilla);
+  if (!anclado) return { ok: false, motivo: 'Esa canción no tiene rejilla que mover.' };
+  await window.pletina.track.rejilla(actual.id, { ...anclado, compasFuerte: 0 });
   const track = getTrack(actual.id);
   if (track?.rejilla) {
     track.rejilla = {
-      ...track.rejilla, offset, tiempoFuerte: 0, compasFuerte: 0, aMano: true,
+      ...track.rejilla, ...anclado, compasFuerte: 0, aMano: true,
     };
   }
   // Y el plato se coloca en ese mismo uno, que es donde el usuario lo ha puesto.
   player.moverPreparado(siguienteCompas(actual.tiempo - compas / 2, track?.rejilla ?? rejilla));
   avisar();
   return { ok: true };
+}
+
+/* --------------------------------------------------- marcar el tempo a mano */
+
+/** Los golpecitos que lleva dados quien está marcando el tempo. */
+let golpes = [];
+/** Si pasa esto entre dos golpes, es que empieza a marcar de nuevo. */
+const OLVIDO = 2.5;
+
+export const golpesMarcados = () => golpes.length;
+
+/**
+ * Marca el tempo del plato B dando golpecitos.
+ *
+ * La salida cuando el análisis no acierta —y hay música con la que no acierta
+ * nadie: un directo, una grabación vieja, algo tocado a mano—. Pone solo el
+ * tempo, no el «uno»: el uno se pone con su botón, que sabe exactamente dónde
+ * está el plato. Prometer las dos cosas de un golpecito sería mentir.
+ */
+export async function marcarTempoEnB() {
+  const actual = platoB();
+  if (!actual) return { ok: false, motivo: 'No hay nada preparado en el plato B.' };
+
+  const ahora = performance.now() / 1000;
+  if (golpes.length && ahora - golpes[golpes.length - 1] > OLVIDO) golpes = [];
+  golpes.push(ahora);
+
+  const medido = tempoDeGolpes(golpes);
+  if (!medido) return { ok: true, golpes: golpes.length, bpm: 0 };
+
+  const guardada = await window.pletina.track.rejilla(actual.id, { bpm: medido.bpm });
+  const track = getTrack(actual.id);
+  if (track && guardada?.rejilla) {
+    track.rejilla = guardada.rejilla;
+    track.bpm = guardada.bpm ?? track.bpm;
+  }
+  avisar();
+  return {
+    ok: true, golpes: golpes.length, bpm: medido.bpm, firme: medido.firme,
+  };
+}
+
+/** Se olvida de los golpes: al soltar el plato o al cambiar de canción. */
+export function olvidarGolpes() {
+  golpes = [];
 }
 
 /**

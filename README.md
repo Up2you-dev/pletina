@@ -58,7 +58,7 @@ npm run dist:win     # y esto te deja el instalador en release\
 Y para lo demás:
 
 ```bash
-npm run verify       # lint + 317 pruebas + arranque real, arrastre, mezcla, cadena y rejilla
+npm run verify       # lint + 332 pruebas + arranque real, arrastre, mezcla, cadena y rejilla
 npm run dist:mac     # .dmg (arm64 + x64)  · hay que ejecutarlo EN un Mac
 npm run dist:linux   # AppImage + .deb
 ```
@@ -166,6 +166,12 @@ canción o desde la cola. Se queda esperando, colocado por donde la canción
 empieza a sonar de verdad —casi ningún archivo empieza en el segundo cero—, se
 puede preescuchar, mover arrastrando y quitar. La cola sigue estando, pero deja
 de mandar: eso es lo que separa una cabina de una lista de reproducción.
+
+**Y si el análisis no acierta, se pone a mano.** Cuatro golpecitos al ritmo de
+la canción —botón «Marcar tempo» o la tecla `T`— y ya tiene tempo; «El uno está
+aquí» coloca el compás donde de verdad empieza. Con eso, una canción a la que el
+análisis no le encuentra pulso se puede pinchar igual: hay música con la que no
+acierta ningún detector, y quedarse fuera por eso no es una opción.
 
 **Qué se pincha después lo decides tú.** Las sugerencias dicen su criterio
 —primero lo que encaja de tonalidad, luego lo que menos hay que estirar— y al
@@ -297,6 +303,7 @@ deja la aplicación como recién instalada; **la música no se toca nunca**.
 | M | mezclar ahora |
 | , · . | empujar el plato que suena |
 | [ · ] | en la cabina, un compás atrás · adelante en el plato B |
+| T | en la cabina, marcar el tempo a golpecitos |
 | B | en la cabina, preescuchar el plato B |
 | / o `Cmd/Ctrl+F` | buscar |
 | `Cmd/Ctrl` + 1…6 | biblioteca, álbumes, artistas, favoritos, reciente, mezclador |
@@ -336,7 +343,7 @@ y los empaqueta en `.ico` y `.icns`).
 
 ## Pruebas
 
-- `npm test` — 317 pruebas sobre la lógica pura (cola, orden y búsqueda,
+- `npm test` — 332 pruebas sobre la lógica pura (cola, orden y búsqueda,
   formato, `Range`), sobre el almacén y la biblioteca contra archivos de verdad
   en carpetas temporales —análisis incremental, ausencias, discos desconectados,
   correcciones de etiquetas, listas y M3U de ida y vuelta— y de contrato entre

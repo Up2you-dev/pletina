@@ -41,6 +41,7 @@ import {
   cambiarAjustes,
   cambiarOctavaEnB,
   cargarEnPlatoB,
+  marcarTempoEnB,
   margenAutomatico,
   mezclarAhora,
   platoB,
@@ -682,6 +683,23 @@ const actions = {
         });
         return;
       }
+      case 'marcar-tempo': {
+        // El botón cuenta los golpes en su propia etiqueta y no repinta la
+        // pantalla en cada uno: quien marca un tempo da cuatro golpes seguidos
+        // y necesita el botón quieto debajo del dedo.
+        const boton = document.querySelector('[data-mezcla="marcar-tempo"]');
+        marcarTempoEnB().then((resultado) => {
+          if (!resultado.ok) return toast(resultado.motivo);
+          if (!resultado.bpm) {
+            if (boton) boton.lastChild.textContent = ` Marcando… ${resultado.golpes}`;
+            return undefined;
+          }
+          toast(`Tempo puesto a mano: ${Math.round(resultado.bpm)} pulsaciones${
+            resultado.firme ? '' : ' · la mano bailaba, sigue marcando'}`);
+          return renderStage();
+        });
+        return;
+      }
       case 'octava': {
         cambiarOctavaEnB(Number(valor)).then((resultado) => {
           if (!resultado.ok) toast(resultado.motivo);
@@ -701,14 +719,19 @@ const actions = {
           actions.analizar(ids).then(() => renderStage());
           return;
         }
-        // Y si no falta ninguna, el botón sigue estando y sirve para lo que uno
-        // quiere cuando algo no cuadra: rehacer las dos que tiene delante.
-        const puestas = [state.currentId, platoB()?.id].filter(Boolean);
-        if (!puestas.length) {
-          toast('No hay nada en los platos que volver a analizar.');
-          return;
-        }
-        actions.analizar(puestas, { forzar: true }).then(() => renderStage());
+        // Y si no falta ninguna, se ofrece rehacer la biblioteca entera, que es
+        // lo que uno quiere cuando el análisis no le cuadra. Rehacer solo los
+        // dos platos dejaba fuera justo lo que hay que arreglar.
+        const todas = state.tracks.filter((track) => !track.missing);
+        if (!todas.length) return;
+        dialog({
+          title: `¿Volver a analizar ${plural(todas.length, 'canción', 'canciones')}?`,
+          message: 'Ya están todas analizadas. Volver a hacerlo cuesta unos segundos por canción, y se puede parar desde el aviso de arriba.',
+          ok: 'Volver a analizar',
+        }).then((rehacer) => {
+          if (!rehacer) return undefined;
+          return actions.analizar(todas.map((t) => t.id), { forzar: true }).then(() => renderStage());
+        });
         return;
       }
       case 'compases':
@@ -1299,6 +1322,14 @@ function onKeyDown(event) {
     case ']':
       if (state.view.type === 'mezclador') saltarCompasesEnB(1);
       break;
+    // Marcar el tempo a mano, con la tecla: se dan cuatro golpecitos al ritmo
+    // de la canción y ya tiene tempo, acierte o no el análisis.
+    case 't':
+    case 'T': {
+      if (state.view.type !== 'mezclador') break;
+      actions.mezclador('marcar-tempo');
+      break;
+    }
     case 'b':
     case 'B': {
       if (state.view.type !== 'mezclador') break;

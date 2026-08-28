@@ -48,7 +48,10 @@ function caja(muestras, en, ganancia = 0.8) {
  * parece ir a la mitad de velocidad de lo que va la canción; ahí es donde el
  * análisis se equivocaba de octava y decía 65 de una canción de 130.
  */
-function wav({ bpm, offset = 0.1, segundos = 30, bomboEn = [0, 2], cajaEn = [1, 3] }) {
+// Tres minutos: la prueba dura lo suyo y con canciones cortas se acababa la
+// música a mitad de recorrido, con lo que fallaban comprobaciones que no tenían
+// nada que ver —los platos vacíos porque sí—.
+function wav({ bpm, offset = 0.1, segundos = 180, bomboEn = [0, 2], cajaEn = [1, 3] }) {
   const total = Math.floor(TASA * segundos);
   const muestras = new Float32Array(total);
   const periodo = 60 / bpm;
@@ -321,6 +324,21 @@ comprobar('el análisis deja rejilla que dibujar', rejillaVista.lineas > 4,
 comprobar('y se ve encima de la onda', rejillaVista.columnas >= rejillaVista.unos,
   `${rejillaVista.columnas} columnas con tinta arriba`);
 
+// Y la del plato que va a entrar, que es la que de verdad hay que mirar: sin
+// rejilla en el B no hay forma de ver si las dos van cuadradas.
+const rejillaDeB = await evaluar(`(() => {
+  const c = document.querySelector('[data-onda="zoom-b"]');
+  const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  let columnas = 0;
+  for (let x = 0; x < c.width; x += 1) {
+    const i = (2 * c.width + x) * 4;
+    if (d[i + 3] > 20) columnas += 1;
+  }
+  return columnas;
+})()`);
+comprobar('y el plato que entra también tiene su rejilla', rejillaDeB >= 2,
+  `${rejillaDeB} columnas con tinta arriba`);
+
 // Y el ×2 de la cabina, pulsándolo como se pulsa: el botón tiene que estar
 // vivo, la orden llegar y el número cambiar en la ficha del plato.
 const bpmDeB = () => evaluar(`(async () => (await import('./mezclador.js')).platoB()?.ficha?.bpm ?? 0)()`);
@@ -399,6 +417,60 @@ comprobar('una canción de la cola se puede arrastrar',
   typeof desdeLaCola === 'string' && desdeLaCola.startsWith('['), desdeLaCola);
 // Y se deja como estaba, que lo que viene después mira la cola.
 await abrirCola(false);
+
+/* ------------------------------------------------- poner la rejilla a mano */
+
+console.log('poner la rejilla a mano:');
+// El «uno» tiene que quedar EXACTAMENTE donde está el plato. Guardar solo el
+// desfase dentro de un tiempo lo dejaba a uno, dos o tres tiempos de donde se
+// había puesto, tres veces de cada cuatro.
+const puntos = [0.9, 1.4, 1.85, 2.3];
+const errores = [];
+for (const segundo of puntos) {
+  await evaluar(`(async () => {
+    const m = await import('./mezclador.js');
+    const p = await import('./player.js');
+    p.moverPreparado(${segundo});
+    await m.ponerElUnoEnB();
+  })()`);
+  await sleep(500);
+  const error = await evaluar(`(async () => {
+    const m = await import('./mezclador.js');
+    const r = m.platoB()?.ficha?.rejilla;
+    if (!r?.bpm) return null;
+    const periodo = 60 / r.bpm;
+    const compas = periodo * (r.tiemposPorCompas ?? 4);
+    const uno = r.offset + (r.tiempoFuerte ?? 0) * periodo;
+    const resto = ((${segundo} - uno) % compas + compas) % compas;
+    return Math.min(resto, compas - resto);
+  })()`);
+  errores.push(error);
+}
+comprobar('«El uno está aquí» deja el uno donde se ha puesto',
+  errores.every((e) => e !== null && e < 0.02),
+  errores.map((e) => (e === null ? '—' : `${Math.round(e * 1000)} ms`)).join(' · '));
+
+// Y marcar el tempo a mano: cuatro golpecitos y la canción tiene tempo, acierte
+// o no el análisis.
+const antesDeMarcar = await evaluar(`(async () => (await import('./mezclador.js')).platoB()?.ficha?.bpm ?? 0)()`);
+// Pulsando el botón como se pulsa, seis veces a medio segundo: 120.
+for (let i = 0; i < 6; i += 1) {
+  await evaluar(`document.querySelector('[data-mezcla="marcar-tempo"]')?.click()`);
+  await sleep(500);
+}
+await sleep(400);
+const marcado = {
+  antes: antesDeMarcar,
+  despues: await evaluar(`(async () => (await import('./mezclador.js')).platoB()?.ficha?.bpm ?? 0)()`),
+  ultimo: { golpes: 6 },
+};
+comprobar('marcar el tempo a mano se lo pone a la canción',
+  Math.abs(marcado.despues - 120) < 6,
+  `${marcado.antes} → ${marcado.despues} bpm con ${marcado.ultimo?.golpes} golpes`);
+comprobar('y la rejilla queda puesta a mano', (await evaluar(`(async () => {
+  const m = await import('./mezclador.js');
+  return m.platoB()?.ficha?.rejilla?.aMano === true;
+})()`)) === true);
 
 /* -------------------------------------------------------- los interruptores */
 
@@ -586,7 +658,11 @@ console.log('la herramienta de analizar:');
 // lo escondía en cuanto la canción contaba como analizada, y quien quería
 // rehacerla se quedaba mirando una cabina sin ninguna herramienta.
 const botonesDeAnalizar = await evaluar(`(() => {
-  const texto = (sel) => [...document.querySelectorAll(sel)].map(b => b.textContent.replace(/\\s+/g, ' ').trim());
+  // Lo que dice el botón: su etiqueta, la de accesibilidad o su título. Un
+  // botón de solo icono sin ninguna de las tres no dice nada a nadie.
+  const texto = (sel) => [...document.querySelectorAll(sel)].map(b => (
+    b.textContent.replace(/\\s+/g, ' ').trim() || b.getAttribute('aria-label') || b.title || ''
+  ));
   return {
     platos: texto('[data-mezcla="analizar"]'),
     lote: texto('[data-mezcla="analizar-pendientes"]'),
