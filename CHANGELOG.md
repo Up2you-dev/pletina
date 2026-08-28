@@ -4,6 +4,20 @@ Las versiones siguen [SemVer](https://semver.org/lang/es/). Cada una se
 construye desde la pestaña *Actions* del repositorio; una etiqueta `v1.2.3`
 además publica los instaladores sueltos en la página de versiones.
 
+## 4.2.1 — 2026-08-28
+
+- **El botón de analizar volvió a aparecer, y ahora no se va nunca.** En la
+  versión anterior lo escondí en las canciones que ya contaban como analizadas
+  —incluidas las que salen con tempo pero sin rejilla— y eso dejaba la cabina
+  sin ninguna herramienta justo cuando hace falta: cuando algo no cuadra y uno
+  quiere rehacerlo. El botón está siempre, dice «Analizar» o «Volver a
+  analizar» según toque, y **volver a analizar rehace el trabajo de verdad** en
+  vez de contestar «ya estaba analizada» y no hacer nada, que es la peor manera
+  de tener razón. Lo mismo con el de la cabina: sin nada pendiente ahora rehace
+  las dos canciones que tienes en los platos.
+- Hay una prueba que cuenta los botones de analizar con la biblioteca entera
+  analizada y falla si desaparece alguno.
+
 ## 4.2.0 — 2026-08-28
 
 La cabina deja de ser una lista cerrada de la que no se conoce el criterio.

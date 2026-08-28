@@ -647,7 +647,10 @@ const actions = {
         break;
       }
       case 'analizar':
-        actions.analizar([valor]).then(() => renderStage());
+        // Si ya está analizada, el botón dice «Volver a analizar» y tiene que
+        // volver a analizarla de verdad: sin forzar contestaba «ya estaba
+        // analizada» y no hacía nada, que es la peor manera de tener razón.
+        actions.analizar([valor], { forzar: analizada(getTrack(valor)) }).then(() => renderStage());
         return;
       case 'zoom':
         cambiarZoom(Number(valor));
@@ -694,8 +697,18 @@ const actions = {
         // hay sugerencias ni rejilla, y descubrirlo teniendo que ir a la
         // biblioteca es un viaje de más justo cuando estás pinchando.
         const ids = state.tracks.filter((track) => !track.missing && !analizada(track)).map((t) => t.id);
-        if (!ids.length) return;
-        actions.analizar(ids).then(() => renderStage());
+        if (ids.length) {
+          actions.analizar(ids).then(() => renderStage());
+          return;
+        }
+        // Y si no falta ninguna, el botón sigue estando y sirve para lo que uno
+        // quiere cuando algo no cuadra: rehacer las dos que tiene delante.
+        const puestas = [state.currentId, platoB()?.id].filter(Boolean);
+        if (!puestas.length) {
+          toast('No hay nada en los platos que volver a analizar.');
+          return;
+        }
+        actions.analizar(puestas, { forzar: true }).then(() => renderStage());
         return;
       }
       case 'compases':

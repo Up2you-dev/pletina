@@ -94,9 +94,10 @@ function cabeceraDeck(ficha, papel) {
     </span>
     <span class="deck-datos" data-datos="${esc(papel[0])}">${datosDe(ficha)}</span>
     <span class="deck-reloj" data-reloj="${esc(papel[0])}"></span>
-    ${ficha.analizada || ficha.sinPulso ? '' : `<button class="btn btn-ghost pequeno" data-mezcla="analizar" data-id="${esc(ficha.id)}">
-      ${ICO.waves}Analizar
-    </button>`}
+    <button class="btn btn-ghost pequeno" data-mezcla="analizar" data-id="${esc(ficha.id)}"
+      title="Tempo, tonalidad y rejilla de compases">
+      ${ICO.waves}${ficha.analizada || ficha.sinPulso ? 'Volver a analizar' : 'Analizar'}
+    </button>
   </header>`;
 }
 
@@ -254,8 +255,9 @@ export function pintarMezclador() {
         <span class="candidatos-tools">
           <input type="search" class="buscar-candidato" data-buscar-candidato
             placeholder="Buscar en la biblioteca…" value="${esc(busqueda)}" aria-label="Buscar una canción para el plato B">
-          ${pendientes ? `<button class="btn btn-ghost pequeno" data-mezcla="analizar-pendientes">
-            ${ICO.waves}Analizar ${pendientes}</button>` : ''}
+          <button class="btn btn-ghost pequeno" data-mezcla="analizar-pendientes"
+            title="Tempo, tonalidad y rejilla de compases">
+            ${ICO.waves}${pendientes ? `Analizar ${pendientes}` : 'Volver a analizar los platos'}</button>
         </span>
       </div>
       <div class="candidatos-lista">${lista.map(candidatoHtml).join('')}</div>

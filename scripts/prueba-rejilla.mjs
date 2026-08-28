@@ -580,6 +580,45 @@ await pulsar('ArrowRight', { alt: true });
 comprobar('y con Alt, diez', (await tiempo()) - despues > 7,
   `${despues.toFixed(1)} s → ${(await tiempo()).toFixed(1)} s`);
 
+console.log('la herramienta de analizar:');
+// Analizar tiene que poder pedirse SIEMPRE, también cuando ya está hecho: es
+// el botón al que se recurre justo cuando algo no cuadra. La versión anterior
+// lo escondía en cuanto la canción contaba como analizada, y quien quería
+// rehacerla se quedaba mirando una cabina sin ninguna herramienta.
+const botonesDeAnalizar = await evaluar(`(() => {
+  const texto = (sel) => [...document.querySelectorAll(sel)].map(b => b.textContent.replace(/\\s+/g, ' ').trim());
+  return {
+    platos: texto('[data-mezcla="analizar"]'),
+    lote: texto('[data-mezcla="analizar-pendientes"]'),
+  };
+})()`);
+comprobar('el plato ofrece volver a analizar aunque ya esté analizada',
+  botonesDeAnalizar.platos.length >= 1 && botonesDeAnalizar.platos.every((t) => /analizar/i.test(t)),
+  botonesDeAnalizar.platos.join(' · ') || 'ninguno');
+comprobar('y la cabina también, con todo analizado',
+  botonesDeAnalizar.lote.length === 1 && /analizar/i.test(botonesDeAnalizar.lote[0]),
+  botonesDeAnalizar.lote.join(' · ') || 'ninguno');
+
+// Y al pulsarlo con todo analizado, rehace de verdad en vez de contestar que
+// ya estaba hecho.
+const antesDeRehacer = await evaluar(`(async () => {
+  const s = await window.pletina.library.snapshot();
+  return s.tracks.find(t => t.title === 'Garage')?.analisis?.en ?? 0;
+})()`);
+await evaluar(`document.querySelector('[data-mezcla="analizar"]')?.click()`);
+for (let i = 0; i < 400; i += 1) {
+  await sleep(100);
+  if (i > 12 && !(await evaluar(`document.querySelector('#chip')?.classList.contains('show') ?? false`))) break;
+}
+await sleep(800);
+const despuesDeRehacer = await evaluar(`(async () => {
+  const s = await window.pletina.library.snapshot();
+  return s.tracks.find(t => t.title === 'Garage')?.analisis?.en ?? 0;
+})()`);
+comprobar('volver a analizar rehace el trabajo, no contesta que ya estaba',
+  despuesDeRehacer > antesDeRehacer, `${antesDeRehacer} → ${despuesDeRehacer}`);
+
+
 clearTimeout(guardia);
 await terminar(fallos.length ? 1 : 0, fallos.length
   ? `REJILLA: fallan ${fallos.length} — ${fallos.join(' · ')}`
