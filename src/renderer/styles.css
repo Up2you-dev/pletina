@@ -24,7 +24,13 @@
   /* La onda, banda a banda: graves, medios y agudos. El azul de los graves y
      el ámbar de los medios son los de cualquier cabina; se leen de un vistazo. */
   --onda-grave:#3A3FD4; --onda-medio:#D08A2A; --onda-agudo:#8C8AA3;
-  --onda-rejilla:rgba(25,24,35,.5); --onda-fondo:#EDEBF5;
+  /* La rejilla tiene colores PROPIOS, que no son ninguna de las tres bandas ni
+     ningún color de la interfaz. Compartirlos fue el fallo que la hacía
+     invisible: en oscuro, la línea de frase y la banda de medios eran la misma
+     cadena hexadecimal, contraste 1,00:1. Se dibujan además con un halo del
+     color del fondo, así que la línea se lee contra el halo y el halo contra la
+     onda: legible encima de lo que sea. */
+  --onda-rejilla:#141320; --onda-frase:#C4344A; --onda-fondo:#EDEBF5;
 }
 :root[data-theme="dark"]{
   --bg:#101018; --panel:#171722; --panel-2:#20202C; --panel-3:#2A2A39;
@@ -37,7 +43,7 @@
   --shadow:0 1px 2px rgba(0,0,0,.5), 0 12px 30px -16px rgba(0,0,0,.9);
   --shadow-pop:0 2px 8px rgba(0,0,0,.55), 0 22px 48px -18px rgba(0,0,0,1);
   --onda-grave:#5B63FF; --onda-medio:#F0B357; --onda-agudo:#CFCCE4;
-  --onda-rejilla:rgba(236,234,244,.55); --onda-fondo:#0C0C13;
+  --onda-rejilla:#FFFFFF; --onda-frase:#FF6B7A; --onda-fondo:#0C0C13;
 }
 
 *{box-sizing:border-box}

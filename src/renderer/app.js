@@ -41,6 +41,7 @@ import {
   cambiarAjustes,
   cambiarOctavaEnB,
   cargarEnPlatoB,
+  marcandoTempo,
   marcarTempoEnB,
   margenAutomatico,
   mezclarAhora,
@@ -63,6 +64,8 @@ import {
 const api = window.pletina;
 let appInfo = { version: '', electron: '', dataDir: '', dark: false };
 let countedFor = null;
+/** El repintado que espera a que se acabe la ráfaga de golpecitos del tempo. */
+let esperandoGolpes = null;
 
 /**
  * Temporizador de apagado. Guarda el instante en que hay que bajar la música, o
@@ -95,6 +98,10 @@ async function refreshLibrary({ keepScroll = true } = {}) {
     player.stop();
     state.currentId = null;
   }
+  // Y el plato preparado, que si no la cabina se queda diciendo «Nada cargado»
+  // con seis botones activos sobre una canción que ya no existe.
+  const preparada = player.estadoPreparado().id;
+  if (preparada && !state.byId.has(preparada)) soltarPlatoB();
   normalizeView();
   renderAll();
   renderNowPlaying();
@@ -111,6 +118,10 @@ function loadAndPlay(id, { play = true, position = 0 } = {}) {
   renderNowPlaying();
   refreshRows();
   renderQueue();
+  // Y la cabina, que si no se queda con el título, la carátula y las
+  // sugerencias de la canción anterior mientras el plato ya dibuja la nueva:
+  // la pantalla contradiciéndose a sí misma.
+  if (state.view.type === 'mezclador') renderStage();
   persist({ last: { trackId: id, position } });
 }
 
@@ -419,7 +430,9 @@ const actions = {
     const texto = $('#chip-text');
     const resumen = await analizarLote(ids, {
       forzar,
-      analizar: (id) => analizarPista(id, motor.contexto),
+      // El análisis ya no usa el contexto de reproducción: decodifica a una
+      // tasa fija para que el resultado no dependa de la tarjeta de sonido.
+      analizar: (id) => analizarPista(id),
       guardar: async (id, resultado) => {
         await api.track.analysis(id, resultado);
         // La onda de antes ya no vale: se vuelve a pedir cuando haga falta.
@@ -690,13 +703,20 @@ const actions = {
         const boton = document.querySelector('[data-mezcla="marcar-tempo"]');
         marcarTempoEnB().then((resultado) => {
           if (!resultado.ok) return toast(resultado.motivo);
-          if (!resultado.bpm) {
-            if (boton) boton.lastChild.textContent = ` Marcando… ${resultado.golpes}`;
-            return undefined;
+          // La etiqueta del botón lleva la cuenta y el tempo que va saliendo,
+          // sin repintar nada: el botón tiene que quedarse quieto bajo el dedo.
+          if (boton) {
+            boton.lastChild.textContent = resultado.bpm
+              ? ` ${Math.round(resultado.bpm)} bpm · ${resultado.golpes} golpes`
+              : ` Marcando… ${resultado.golpes}`;
           }
-          toast(`Tempo puesto a mano: ${Math.round(resultado.bpm)} pulsaciones${
-            resultado.firme ? '' : ' · la mano bailaba, sigue marcando'}`);
-          return renderStage();
+          // Y cuando se deja de marcar, la cabina se entera de una vez.
+          clearTimeout(esperandoGolpes);
+          esperandoGolpes = setTimeout(() => {
+            if (marcandoTempo()) return;
+            renderStage();
+          }, 2600);
+          return undefined;
         });
         return;
       }
@@ -760,13 +780,19 @@ const actions = {
    * Se vuelve a pintar en cada tecla, así que hay que devolverle el foco: sin
    * esto se escribe una letra y el cursor se cae del campo.
    */
-  buscarCandidato(texto) {
+  buscarCandidato(texto, campoViejo) {
+    // Se guarda dónde estaba el cursor y se devuelve ahí. Mandarlo al final
+    // hacía imposible corregir una letra en medio de la palabra, y rompía las
+    // teclas muertas de las tildes, que en castellano es escribir normal.
+    const inicio = campoViejo?.selectionStart ?? null;
+    const fin = campoViejo?.selectionEnd ?? null;
     buscarParaPlatoB(texto);
     renderStage();
     const campo = document.querySelector('[data-buscar-candidato]');
     if (!campo) return;
     campo.focus();
-    campo.setSelectionRange(campo.value.length, campo.value.length);
+    if (inicio != null) campo.setSelectionRange(inicio, fin ?? inicio);
+    else campo.setSelectionRange(campo.value.length, campo.value.length);
   },
   cargarEnPlatoB(id) {
     const resultado = cargarEnPlatoB(id);

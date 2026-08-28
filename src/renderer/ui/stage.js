@@ -594,6 +594,16 @@ export function bindStage(handlers) {
   let dragging = null;
 
   body.addEventListener('dragstart', (event) => {
+    // Un candidato de la cabina también se arrastra: es la única fuente a la
+    // vista estando en el mezclador, y se anunciaba arrastrable con el arrastre
+    // cancelado, que es peor que no ofrecerlo.
+    const candidato = event.target.closest('[data-cargar][data-id]');
+    if (candidato) {
+      event.dataTransfer.effectAllowed = 'copy';
+      event.dataTransfer.setData('application/x-pletina-tracks', JSON.stringify([candidato.dataset.id]));
+      event.dataTransfer.setData('text/plain', candidato.dataset.id);
+      return;
+    }
     const row = event.target.closest('.row');
     if (!row) {
       event.preventDefault();
@@ -678,7 +688,7 @@ export function bindStage(handlers) {
   // El buscador del plato B: escribir manda sobre las sugerencias.
   body.addEventListener('input', (event) => {
     const buscador = event.target.closest('[data-buscar-candidato]');
-    if (buscador) actions.buscarCandidato(buscador.value);
+    if (buscador) actions.buscarCandidato(buscador.value, buscador);
   });
 
   $('#stage').addEventListener('click', (event) => {

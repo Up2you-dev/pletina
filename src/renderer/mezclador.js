@@ -261,7 +261,11 @@ export function prepararPlan(idEntrante = entranteElegida()) {
 export function platoB() {
   const preparado = player.estadoPreparado();
   if (!preparado.id) return null;
-  return { ...preparado, ficha: fichaDeMezcla(preparado.id) };
+  const ficha = fichaDeMezcla(preparado.id);
+  // Sin ficha, la canción ya no está en la biblioteca: mejor plato vacío que
+  // una cabina con los botones activos sobre algo que no existe.
+  if (!ficha) return null;
+  return { ...preparado, ficha };
 }
 
 /**
@@ -346,7 +350,11 @@ export async function marcarTempoEnB() {
     track.rejilla = guardada.rejilla;
     track.bpm = guardada.bpm ?? track.bpm;
   }
-  avisar();
+  // Sin `avisar()`: quien marca un tempo da golpes seguidos, y repintar la
+  // cabina en cada uno destruye el botón bajo el dedo. Un `mousedown` en el
+  // botón viejo y su `mouseup` en el nuevo ni siquiera cuentan como clic, así
+  // que se perdían golpes y el tempo salía de una serie con huecos. La cabina
+  // se repinta cuando se acaba la ráfaga.
   return {
     ok: true, golpes: golpes.length, bpm: medido.bpm, firme: medido.firme,
   };
@@ -356,6 +364,10 @@ export async function marcarTempoEnB() {
 export function olvidarGolpes() {
   golpes = [];
 }
+
+/** ¿Se sigue marcando el tempo ahora mismo? La cabina no repinta mientras. */
+export const marcandoTempo = () => golpes.length > 0
+  && performance.now() / 1000 - golpes[golpes.length - 1] < OLVIDO;
 
 /**
  * Cuenta el tempo del plato B al doble o a la mitad.

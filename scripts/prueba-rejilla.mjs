@@ -299,45 +299,66 @@ const colores = await evaluar(`(() => {
 })()`);
 comprobar('con las tres bandas de distinto color', colores >= 3, `${colores} colores`);
 
-// La rejilla tiene que VERSE encima de la onda. Se dibuja en la franja de
-// arriba, donde la onda no llega nunca: si ahí no hay tinta, no hay rejilla que
-// mirar por mucho que el análisis la haya calculado.
-const rejillaVista = await evaluar(`(async () => {
-  const m = await import('./mezclador.js');
-  const st = await import('./state.js');
-  const ov = await import('../shared/onda-vista.js');
-  const p = await import('./player.js');
-  const ficha = m.fichaDeMezcla(st.state.currentId);
-  const { desde, hasta } = ov.ventana(p.currentTime(), 8);
-  const lineas = ov.lineasDeRejilla(ficha?.rejilla ?? null, { desde, hasta });
-  const c = document.querySelector('[data-onda="zoom-a"]');
-  const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
-  let columnas = 0;
-  for (let x = 0; x < c.width; x += 1) {
-    const i = (2 * c.width + x) * 4;
-    if (d[i + 3] > 20) columnas += 1;
-  }
-  return { lineas: lineas.length, unos: lineas.filter(l => l.tipo !== 'golpe').length, columnas };
-})()`);
-comprobar('el análisis deja rejilla que dibujar', rejillaVista.lineas > 4,
-  `${rejillaVista.lineas} líneas, ${rejillaVista.unos} compases`);
-comprobar('y se ve encima de la onda', rejillaVista.columnas >= rejillaVista.unos,
-  `${rejillaVista.columnas} columnas con tinta arriba`);
+// La rejilla tiene que VERSE ENCIMA DE LA ONDA, no en el hueco de arriba.
+//
+// La prueba de antes contaba píxeles con alfa en la franja superior, donde la
+// onda no llega nunca: certificaba que se escribía tinta justo donde la rejilla
+// era legible y callaba sobre el 84 % central, que es donde el usuario mira y
+// donde la línea se fundía con la onda. Ahora se mide el SALTO DE LUMINANCIA
+// entre la columna de la línea y sus vecinas, a media altura, y en los dos
+// temas: es lo que decide si el ojo la ve.
+const contrasteDeRejilla = async (cual, tema) => {
+  await evaluar(`(() => { document.documentElement.setAttribute('data-theme', '${tema}'); return true; })()`);
+  await sleep(700);
+  return evaluar(`(async () => {
+    const m = await import('./mezclador.js');
+    const st = await import('./state.js');
+    const ov = await import('../shared/onda-vista.js');
+    const p = await import('./player.js');
+    const ficha = '${cual}' === 'a' ? m.fichaDeMezcla(st.state.currentId) : m.platoB()?.ficha;
+    const centro = '${cual}' === 'a' ? p.currentTime() : (m.platoB()?.tiempo ?? 0);
+    const { desde, hasta } = ov.ventana(centro, 8);
+    const lineas = ov.lineasDeRejilla(ficha?.rejilla ?? null, { desde, hasta });
+    const c = document.querySelector('[data-onda="zoom-${cual}"]');
+    const razon = c.width / c.getBoundingClientRect().width;
+    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    const lum = (x, y) => {
+      const i = (Math.round(y) * c.width + Math.round(x)) * 4;
+      const f = (v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+      return 0.2126 * f(d[i]) + 0.7152 * f(d[i + 1]) + 0.0722 * f(d[i + 2]);
+    };
+    const contraste = (a, b) => { const [x, y] = [a, b].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+    const alturas = [c.height * 0.5, c.height * 0.35, c.height * 0.65];
+    const saltos = [];
+    for (const linea of lineas) {
+      if (linea.tipo === 'golpe') continue;
+      const x = ov.xDeSegundo(linea.segundo, { desde, hasta, ancho: c.width / razon }) * razon;
+      if (x < 12 || x > c.width - 12) continue;
+      // El peor de los tres cortes: si en alguno se funde, no vale.
+      let peor = Infinity;
+      for (const y of alturas) {
+        const dentro = Math.max(lum(x, y), lum(x - 1, y), lum(x + 1, y));
+        const fuera = Math.min(lum(x - 7, y), lum(x + 7, y));
+        peor = Math.min(peor, contraste(dentro, fuera));
+      }
+      saltos.push(Math.round(peor * 100) / 100);
+    }
+    return { lineas: lineas.length, unos: saltos.length, saltos, peor: saltos.length ? Math.min(...saltos) : 0 };
+  })()`);
+};
 
-// Y la del plato que va a entrar, que es la que de verdad hay que mirar: sin
-// rejilla en el B no hay forma de ver si las dos van cuadradas.
-const rejillaDeB = await evaluar(`(() => {
-  const c = document.querySelector('[data-onda="zoom-b"]');
-  const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
-  let columnas = 0;
-  for (let x = 0; x < c.width; x += 1) {
-    const i = (2 * c.width + x) * 4;
-    if (d[i + 3] > 20) columnas += 1;
+for (const tema of ['light', 'dark']) {
+  for (const cual of ['a', 'b']) {
+    const medida = await contrasteDeRejilla(cual, tema);
+    comprobar(`la rejilla del plato ${cual.toUpperCase()} se ve sobre la onda (tema ${tema})`,
+      // Un compás basta: el plato preparado está aparcado al principio de la
+      // canción y en su ventana no caben más. Lo que se exige es el contraste.
+      medida.unos >= 1 && medida.peor >= 3,
+      `${medida.unos} compases · peor contraste ${medida.peor}:1`);
   }
-  return columnas;
-})()`);
-comprobar('y el plato que entra también tiene su rejilla', rejillaDeB >= 2,
-  `${rejillaDeB} columnas con tinta arriba`);
+}
+await evaluar(`(() => { document.documentElement.setAttribute('data-theme', 'dark'); return true; })()`);
+await sleep(400);
 
 // Y el ×2 de la cabina, pulsándolo como se pulsa: el botón tiene que estar
 // vivo, la orden llegar y el número cambiar en la ficha del plato.

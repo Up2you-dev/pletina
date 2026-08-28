@@ -21,15 +21,57 @@ const ESCALA = 0.92;
 function colores(canvas) {
   const estilo = getComputedStyle(canvas);
   const leer = (nombre, porDefecto) => estilo.getPropertyValue(nombre).trim() || porDefecto;
+  // Los valores por defecto son los del tema claro de verdad. Antes eran de una
+  // paleta que la aplicación no usa, así que el día que una variable no
+  // resolviera la rejilla saldría blanca sobre fondo claro y en silencio.
   return {
-    grave: leer('--onda-grave', '#4f46e5'),
-    medio: leer('--onda-medio', '#f59e0b'),
-    agudo: leer('--onda-agudo', '#e5e7eb'),
-    fondo: leer('--onda-fondo', 'transparent'),
-    rejilla: leer('--onda-rejilla', 'rgba(255,255,255,.28)'),
-    acento: leer('--accent', '#4f46e5'),
-    senal: leer('--signal', '#f59e0b'),
+    grave: leer('--onda-grave', '#3A3FD4'),
+    medio: leer('--onda-medio', '#D08A2A'),
+    agudo: leer('--onda-agudo', '#8C8AA3'),
+    fondo: leer('--onda-fondo', '#EDEBF5'),
+    rejilla: leer('--onda-rejilla', '#141320'),
+    frase: leer('--onda-frase', '#C4344A'),
+    acento: leer('--accent', '#3A3FD4'),
+    senal: leer('--signal', '#9C5A0C'),
   };
+}
+
+/**
+ * Una línea con halo, para que se lea encima de la onda.
+ *
+ * Este es el arreglo de «no se ven las rejillas». Una línea traslúcida sobre una
+ * onda densa tiene un contraste de 1,1:1 —o sea, ninguno—, y en tema oscuro la
+ * línea de frase era exactamente el mismo color que la banda de medios. Con un
+ * trazo ancho del color del fondo debajo, la línea se lee contra su halo y el
+ * halo contra la onda, y eso funciona encima de cualquier banda.
+ */
+function lineaConHalo(ctx, x, desde, hasta, { color, alfa = 1, grosor = 1, halo }) {
+  ctx.beginPath();
+  ctx.moveTo(x, desde);
+  ctx.lineTo(x, hasta);
+  ctx.globalAlpha = 0.9;
+  ctx.strokeStyle = halo;
+  ctx.lineWidth = grosor + 3;
+  ctx.stroke();
+  ctx.globalAlpha = alfa;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = grosor;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+/** Y un número con su halo, por lo mismo. */
+function numeroConHalo(ctx, texto, x, y, { color, halo }) {
+  ctx.font = '600 10px ui-monospace, monospace';
+  ctx.textBaseline = 'top';
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = halo;
+  ctx.globalAlpha = 0.9;
+  ctx.strokeText(texto, x, y);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = color;
+  ctx.fillText(texto, x, y);
+  ctx.textBaseline = 'alphabetic';
 }
 
 /**
@@ -40,9 +82,16 @@ export function ajustarLienzo(canvas) {
   const razon = window.devicePixelRatio || 1;
   const ancho = Math.max(1, Math.floor(canvas.clientWidth));
   const alto = Math.max(1, Math.floor(canvas.clientHeight));
-  if (canvas.width !== ancho * razon || canvas.height !== alto * razon) {
-    canvas.width = ancho * razon;
-    canvas.height = alto * razon;
+  // Comparando contra el valor YA redondeado. Con escalado fraccionario —un
+  // portátil al 125 %— `ancho * razon` no es entero, el navegador lo trunca al
+  // asignarlo y la comparación nunca coincidía: se reasignaba el búfer de los
+  // cuatro lienzos sesenta veces por segundo, justo en la pantalla que tiene
+  // que ir fina.
+  const anchoReal = Math.round(ancho * razon);
+  const altoReal = Math.round(alto * razon);
+  if (canvas.width !== anchoReal || canvas.height !== altoReal) {
+    canvas.width = anchoReal;
+    canvas.height = altoReal;
   }
   const ctx = canvas.getContext('2d');
   ctx.setTransform(razon, 0, 0, razon, 0, 0);
@@ -102,6 +151,7 @@ function pintarBandas(ctx, columnas, {
  */
 export function pintarGeneral(canvas, ondas, {
   posicion = 0, duracion = 0, zona = null, marcas = [], apagado = false, mensaje = '',
+  rejilla = null,
 } = {}) {
   const { ctx, ancho, alto } = ajustarLienzo(canvas);
   const paleta = colores(canvas);
@@ -131,10 +181,21 @@ export function pintarGeneral(canvas, ondas, {
     ctx.globalAlpha = 1;
   }
 
+  // Las frases, en la vista de la canción entera: es la estructura, y es lo que
+  // permite saltar a un sitio sabiendo dónde se cae. Aquí solo las frases: los
+  // compases a esta escala serían una mancha.
+  for (const linea of lineasDeRejilla(rejilla, { desde: 0, hasta: largo, maximo: 4096 })) {
+    if (linea.tipo !== 'frase') continue;
+    lineaConHalo(ctx, Math.round(xDeSegundo(linea.segundo, vista)) + 0.5, 0, alto, {
+      color: paleta.frase, alfa: 0.5, grosor: 1, halo: paleta.fondo,
+    });
+  }
+
   for (const marca of marcas) {
     if (!(marca.segundo >= 0) || marca.segundo > largo) continue;
-    ctx.fillStyle = marca.color || paleta.senal;
-    ctx.fillRect(Math.round(xDeSegundo(marca.segundo, vista)), 0, 2, alto);
+    lineaConHalo(ctx, Math.round(xDeSegundo(marca.segundo, vista)) + 0.5, 0, alto, {
+      color: marca.color || paleta.senal, alfa: 1, grosor: 2, halo: paleta.fondo,
+    });
   }
 
   // Lo ya escuchado, apagado.
@@ -174,48 +235,36 @@ export function pintarZoom(canvas, ondas, {
     ctx.globalAlpha = 1;
   }
 
-  // Rejilla: la frase manda, el compás se ve y el golpe acompaña.
-  //
-  // Se dibuja por encima de la onda y no por debajo, y con fuerza: una rejilla
-  // que no se ve no sirve de nada, y la de antes —un 15 % de opacidad efectiva
-  // sobre una onda densa— no se veía. Es lo que se mira para saber si dos
-  // canciones van cuadradas.
+  // Rejilla: la frase manda, el compás se ve y el golpe acompaña. Todo con
+  // halo, que es lo único que la hace legible encima de una onda densa.
   const lineas = lineasDeRejilla(rejilla, { desde, hasta });
   for (const linea of lineas) {
     const x = Math.round(xDeSegundo(linea.segundo, vista)) + 0.5;
     const esUno = linea.tipo !== 'golpe';
-    ctx.strokeStyle = linea.tipo === 'frase' ? paleta.senal : paleta.rejilla;
-    ctx.globalAlpha = linea.tipo === 'frase' ? 1 : linea.tipo === 'compas' ? 0.85 : 0.4;
-    ctx.lineWidth = linea.tipo === 'frase' ? 2 : 1;
-    ctx.beginPath();
-    // El golpe suelto asoma por arriba y por abajo, sin cruzar la onda; el uno
-    // la cruza entera, que es el que hay que ver de un vistazo.
-    if (esUno) {
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, alto);
-    } else {
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, alto * 0.16);
-      ctx.moveTo(x, alto * 0.84);
-      ctx.lineTo(x, alto);
+    const esFrase = linea.tipo === 'frase';
+    lineaConHalo(ctx, x, esUno ? 0 : 0, esUno ? alto : alto * 0.16, {
+      color: esFrase ? paleta.frase : paleta.rejilla,
+      alfa: esFrase ? (linea.medida ? 1 : 0.8) : linea.tipo === 'compas' ? 0.9 : 0.5,
+      grosor: esFrase ? 2 : 1,
+      halo: paleta.fondo,
+    });
+    // El golpe suelto asoma también por abajo, sin cruzar la onda.
+    if (!esUno) {
+      lineaConHalo(ctx, x, alto * 0.84, alto, {
+        color: paleta.rejilla, alfa: 0.5, grosor: 1, halo: paleta.fondo,
+      });
     }
-    ctx.stroke();
   }
-  ctx.globalAlpha = 1;
   // Y el número del compás encima de su línea: «señalar los compases» es esto,
   // poder contarlos sin llevar la cuenta con el dedo.
   if (alto > 44) {
-    ctx.font = '9px ui-monospace, monospace';
-    ctx.textBaseline = 'top';
     for (const linea of lineas) {
       if (linea.tipo === 'golpe' || linea.compas == null) continue;
-      const x = Math.round(xDeSegundo(linea.segundo, vista)) + 3;
-      ctx.fillStyle = linea.tipo === 'frase' ? paleta.senal : paleta.agudo;
-      ctx.globalAlpha = linea.tipo === 'frase' ? 1 : 0.55;
-      ctx.fillText(String(linea.compas), x, 2);
+      numeroConHalo(ctx, String(linea.compas), Math.round(xDeSegundo(linea.segundo, vista)) + 4, 2, {
+        color: linea.tipo === 'frase' ? paleta.frase : paleta.rejilla,
+        halo: paleta.fondo,
+      });
     }
-    ctx.globalAlpha = 1;
-    ctx.textBaseline = 'alphabetic';
   }
 
   for (const marca of marcas) {

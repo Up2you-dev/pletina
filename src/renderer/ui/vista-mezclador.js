@@ -263,7 +263,7 @@ export function pintarMezclador() {
             placeholder="Buscar en la biblioteca…" value="${esc(busqueda)}" aria-label="Buscar una canción para el plato B">
           <button class="btn btn-ghost pequeno" data-mezcla="analizar-pendientes"
             title="Tempo, tonalidad y rejilla de compases">
-            ${ICO.waves}${pendientes ? `Analizar ${pendientes}` : 'Volver a analizar los platos'}</button>
+            ${ICO.waves}${pendientes ? `Analizar ${pendientes}` : 'Volver a analizar la biblioteca'}</button>
         </span>
       </div>
       <div class="candidatos-lista">${lista.map(candidatoHtml).join('')}</div>
@@ -329,6 +329,11 @@ function pintarCuadro(raiz) {
       posicion: tiempo,
       duracion: ficha?.duracion || ondas?.duracion || 0,
       apagado,
+      // Las frases también en la vista de la canción entera: era el único de los
+      // cuatro lienzos sin ninguna rejilla, y es el primero que se mira.
+      rejilla: ficha?.rejilla ?? null,
+      // Por dónde empieza a sonar de verdad, que es por donde entrará.
+      marcas: ficha?.rejilla?.entrada ? [{ segundo: ficha.rejilla.entrada }] : [],
       zona: cual === 'a' && enCurso
         ? { desde: enCurso.plan.arranque, hasta: enCurso.plan.arranque + enCurso.plan.duracion }
         : null,
@@ -447,20 +452,27 @@ export function cancelarBucle() {
 function empezarArrastre(evento, canvas, cual) {
   const ficha = fichaDelPlato(cual);
   if (!ficha?.id) return;
-  arrastre = { cual, canvas, desde: evento.clientX };
+  // El ancho se guarda AQUÍ y no se vuelve a preguntar. Si la cabina se repinta
+  // a mitad de arrastre —al entrar una transición, por ejemplo—, el lienzo que
+  // se estaba arrastrando queda fuera del documento y su ancho pasa a ser cero:
+  // con el `|| 1` de antes, cada píxel de ratón valía ocho segundos y el plato
+  // se desbocaba o saltaba al final de la canción.
+  arrastre = { cual, canvas, desde: evento.clientX, ancho: canvas.getBoundingClientRect().width };
+  if (!(arrastre.ancho > 0)) { arrastre = null; return; }
   canvas.setPointerCapture?.(evento.pointerId);
   canvas.classList.add('arrastrando');
 }
 
 function seguirArrastre(evento) {
   if (!arrastre) return;
-  const { canvas, cual } = arrastre;
-  const ancho = canvas.getBoundingClientRect().width || 1;
+  const { canvas, cual, ancho } = arrastre;
+  // Y si el lienzo ha dejado de estar en la página, el arrastre se acabó.
+  if (!canvas.isConnected) return terminarArrastre();
   const porPixel = zoom / ancho;
   const delta = (arrastre.desde - evento.clientX) * porPixel;
-  if (Math.abs(delta) < 0.003) return;
+  if (Math.abs(delta) < 0.003) return undefined;
   arrastre.desde = evento.clientX;
-  acciones.empujar?.(cual, delta);
+  return acciones.empujar?.(cual, delta);
 }
 
 function terminarArrastre() {

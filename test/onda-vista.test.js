@@ -93,11 +93,22 @@ describe('lineasDeRejilla', () => {
     expect(porTipo['8.25']).toBe('frase');
   });
 
-  it('sin frase clara, los unos son compases y nada más', () => {
+  it('sin frase medida, la jerarquía sigue estando: los compases van de cuatro en cuatro', () => {
+    // En música masterizada el análisis casi nunca encuentra la frase, y
+    // condicionar la jerarquía a ese número dejaba la rejilla plana. Los
+    // compases se agrupan de cuatro porque así es la música; lo que el análisis
+    // aporta es cuál de los cuatro abre, y eso se marca aparte.
     const lineas = lineasDeRejilla({ ...rejilla, fuerzaFrase: 0 }, { desde: 0, hasta: 9 });
-    expect(lineas.some((l) => l.tipo === 'frase')).toBe(false);
-    // A 120, un compás son dos segundos: en nueve caben cinco unos.
-    expect(lineas.filter((l) => l.tipo === 'compas')).toHaveLength(5);
+    const unos = lineas.filter((l) => l.tipo !== 'golpe');
+    expect(unos).toHaveLength(5);
+    expect(unos.filter((l) => l.tipo === 'frase')).toHaveLength(2);
+    // Pero se dice que esa frase no está medida, para no prometerla.
+    expect(unos.filter((l) => l.tipo === 'frase').every((l) => l.medida === false)).toBe(true);
+  });
+
+  it('con frase medida, se marca como tal', () => {
+    const lineas = lineasDeRejilla(rejilla, { desde: 0, hasta: 9 });
+    expect(lineas.filter((l) => l.tipo === 'frase').every((l) => l.medida === true)).toBe(true);
   });
 
   it('el tiempo fuerte mueve dónde caen los unos', () => {
@@ -115,9 +126,11 @@ describe('lineasDeRejilla', () => {
     expect(unos.filter((l) => l.compas === 1).every((l) => l.tipo === 'frase')).toBe(true);
   });
 
-  it('sin frase, el número es el compás desde el principio', () => {
+  it('los compases se numeran del uno al cuatro aunque no haya frase medida', () => {
+    // Antes se numeraban desde el principio de la canción: en el minuto cuatro
+    // salían números de tres cifras, que no sirven para contar un compás.
     const lineas = lineasDeRejilla({ ...rejilla, fuerzaFrase: 0 }, { desde: 0, hasta: 9 });
-    expect(lineas.filter((l) => l.tipo !== 'golpe').map((l) => l.compas)).toEqual([1, 2, 3, 4, 5]);
+    expect(lineas.filter((l) => l.tipo !== 'golpe').map((l) => l.compas)).toEqual([1, 2, 3, 4, 1]);
   });
 
   it('un golpe suelto no lleva número: no es un compás', () => {

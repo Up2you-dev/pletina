@@ -76,6 +76,13 @@ export function lineasDeRejilla(rejilla, { desde, hasta, maximo = 512 } = {}) {
   if (ultimo < primero) return [];
   if (ultimo - primero > maximo) return [];
 
+  // La jerarquía se dibuja SIEMPRE. Los compases van de cuatro en cuatro porque
+  // así es la música, no porque lo haya medido nadie; lo que el análisis mide
+  // es cuál de los cuatro abre la frase, y eso solo cambia dónde empieza a
+  // contar. En música masterizada `fuerzaFrase` sale casi siempre 0, y
+  // condicionar la jerarquía a ese número dejaba la rejilla plana —sin una sola
+  // línea fuerte— y numerando compases desde el principio de la canción, con
+  // números de tres cifras que no sirven para contar.
   const conFrase = fuerzaFrase > 0;
   const lineas = [];
   for (let k = primero; k <= ultimo; k += 1) {
@@ -88,14 +95,14 @@ export function lineasDeRejilla(rejilla, { desde, hasta, maximo = 512 } = {}) {
     if (enCompas === 0) {
       const compas = Math.floor(desdeElUno / tiemposPorCompas) - compasFuerte;
       const enFrase = ((compas % compasesPorFrase) + compasesPorFrase) % compasesPorFrase;
-      tipo = conFrase && enFrase === 0 ? 'frase' : 'compas';
-      // El número que se enseña es el que uno cuenta: si la canción tiene
-      // frases, del uno al cuatro dentro de la frase, que es como se cuenta en
-      // una cabina. Si no las tiene, el compás desde el principio, que al menos
-      // dice por dónde va.
-      numero = conFrase ? enFrase + 1 : compas + 1;
+      tipo = enFrase === 0 ? 'frase' : 'compas';
+      // Del uno al cuatro, que es como se cuenta en una cabina.
+      numero = enFrase + 1;
     }
-    lineas.push({ segundo, tipo, compas: numero });
+    // `medida` dice si el análisis encontró la frase o si el uno de cada cuatro
+    // es solo la cuenta por defecto: el visor la dibuja algo más floja cuando
+    // no está medida, para no prometer lo que no se sabe.
+    lineas.push({ segundo, tipo, compas: numero, medida: tipo === 'frase' ? conFrase : null });
   }
   return lineas;
 }

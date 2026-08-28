@@ -348,7 +348,16 @@ export function elegirTempo(envolvente, tasaEnvolvente, bpmAprox, { ancho } = {}
       margen: 0.05, pasosBpm: 21, pasosFase: 48, afinado: 96,
     });
     if (!tanteo) continue;
-    const separacion = contraste(envolvente, (60 / tanteo.bpm) * tasaEnvolvente, tanteo.fase);
+    // La fase que devuelve `fijar` es la que maximiza la energía sobre la
+    // rejilla, y aquí se juzga por CONTRASTE, que es otro criterio: comparar
+    // octavas con la fase del otro criterio hacía que una de cada cuatro
+    // canciones rápidas saliera a la mitad, y con confianza 1, sin ningún aviso.
+    const periodo = (60 / tanteo.bpm) * tasaEnvolvente;
+    let separacion = -Infinity;
+    for (let p = 0; p < 96; p += 1) {
+      const c = contraste(envolvente, periodo, (p / 96) * periodo);
+      if (c > separacion) separacion = c;
+    }
     tanteos.push({ bpm: tanteo.bpm, contraste: separacion, valor: separacion * preferencia(tanteo.bpm, ancho) });
   }
   if (!tanteos.length) return nada;
@@ -400,7 +409,13 @@ export function elegirRejilla(envolvente, tasaEnvolvente, bpmAprox, {
  * floja de una charla: el ruido también saca contraste, pero no saca el mismo
  * tempo en el primer tercio que en el último.
  */
-export const firmeza = (deriva) => Math.max(0, Math.min(1, 1 - Math.max(0, deriva - 0.4) / 2.6));
+export const firmeza = (deriva, bpm = 120) => {
+  // Relativa al tempo, no en pulsaciones absolutas. Medio punto a 70 bpm es el
+  // doble de desviación que a 140, y con el umbral en absoluto el mismo
+  // material pasaba o suspendía según en qué octava se contara.
+  const relativa = Math.max(0, Number(deriva) || 0) / Math.max(1, Number(bpm) || 120);
+  return Math.max(0, Math.min(1, 1 - Math.max(0, relativa - 0.003) / 0.022));
+};
 
 export function medirDeriva(envolvente, tasaEnvolvente, bpm) {
   if (!envolvente?.length || !bpm) return 0;
@@ -550,11 +565,15 @@ export function rejillaCompleta(muestras, tasa, bpmAprox, { desde = 0, tiemposPo
   return {
     bpm: rejilla.bpm,
     offset: rejilla.offset,
-    // La confianza es lo que destacan los golpes por lo bien que un solo tempo
-    // explica la canción entera. Las dos cosas a la vez, porque cada una sola
-    // se deja engañar: el ruido saca contraste, y un tempo estable sin golpes
-    // no es un tempo.
-    fuerza: Math.round(rejilla.fuerza * firmeza(deriva) * 100) / 100,
+    // Confianza y firmeza son DOS COSAS y ya no se multiplican. Multiplicarlas
+    // borraba la rejilla de todo lo que respira —un directo, música de club con
+    // sidechain— y encima la cabina lo llamaba «sin pulso claro», que es falso:
+    // el pulso está clarísimo, lo que se mueve es el tempo. Una rejilla que
+    // cuadra treinta segundos vale infinitamente más que ninguna, así que la
+    // firmeza pone un suelo en vez de un cero, y lo que hace de verdad es
+    // avisar.
+    fuerza: Math.round(Math.max(rejilla.fuerza * firmeza(deriva, rejilla.bpm),
+      rejilla.fuerza * 0.35) * 100) / 100,
     deriva,
     tiempoFuerte: compas.tiempoFuerte,
     fuerzaCompas: compas.fuerza,
