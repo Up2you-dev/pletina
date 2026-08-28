@@ -316,6 +316,97 @@ await sleep(700);
 const vacio = await tinta('zoom-b');
 comprobar('un plato vacío no se queda mudo', vacio > 0 && vacio < 5, `${vacio} % (el aviso escrito)`);
 
+/* ------------------------------------------------------ elegir qué preparar */
+
+console.log('elegir qué preparar:');
+await evaluar(`(async () => { (await import('./mezclador.js')).soltarPlatoB(); })()`);
+await sleep(500);
+
+// El buscador manda sobre las sugerencias: se escribe un título y sale, cuadre
+// o no cuadre, esté analizado o no. Una lista cerrada sin criterio no sirve.
+await evaluar(`(() => {
+  const campo = document.querySelector('[data-buscar-candidato]');
+  campo.value = 'Lento';
+  campo.dispatchEvent(new Event('input', { bubbles: true }));
+  return true;
+})()`);
+await sleep(600);
+const buscados = await evaluar(`[...document.querySelectorAll('.candidato')].map(c => c.textContent.replace(/\\s+/g, ' ').trim())`);
+comprobar('el buscador encuentra cualquier canción de la biblioteca',
+  buscados.length === 1 && buscados[0].includes('Lento'), buscados.join(' | ') || 'nada');
+comprobar('y el campo no pierde el foco al escribir',
+  (await evaluar(`document.activeElement?.dataset?.buscarCandidato !== undefined`)) === true);
+
+// Y se puede soltar en el plato B arrastrándola.
+const soltada = await evaluar(`(async () => {
+  const s = await window.pletina.library.snapshot();
+  const track = s.tracks.find(x => x.title === 'Lento');
+  const zona = document.querySelector('[data-suelta="b"]');
+  const datos = new DataTransfer();
+  datos.setData('application/x-pletina-tracks', JSON.stringify([track.id]));
+  zona.dispatchEvent(new DragEvent('dragover', { dataTransfer: datos, bubbles: true, cancelable: true }));
+  const encima = zona.classList.contains('encima');
+  zona.dispatchEvent(new DragEvent('drop', { dataTransfer: datos, bubbles: true, cancelable: true }));
+  return { encima, id: track.id };
+})()`);
+await sleep(1200);
+const enPlato = await evaluar(`(async () => (await import('./mezclador.js')).platoB()?.id ?? null)()`);
+comprobar('el plato B se enciende cuando le pasas una canción por encima', soltada.encima === true);
+comprobar('y al soltarla se prepara ahí', enPlato === soltada.id, `${enPlato}`);
+
+// La cola también es fuente de arrastre: en la cabina no se ve la biblioteca.
+const abrirCola = async (abierta) => evaluar(`(async () => {
+  const st = await import('./state.js');
+  st.state.queueOpen = ${abierta};
+  (await import('./ui/queue.js')).renderQueue();
+  return st.state.queueOpen;
+})()`);
+await abrirCola(true);
+await sleep(500);
+const desdeLaCola = await evaluar(`(() => {
+  const item = document.querySelector('#queue-panel .q-item[data-id]');
+  if (!item) return 'sin cola abierta';
+  const datos = new DataTransfer();
+  item.dispatchEvent(new DragEvent('dragstart', { dataTransfer: datos, bubbles: true, cancelable: true }));
+  return datos.getData('application/x-pletina-tracks');
+})()`);
+comprobar('una canción de la cola se puede arrastrar',
+  typeof desdeLaCola === 'string' && desdeLaCola.startsWith('['), desdeLaCola);
+// Y se deja como estaba, que lo que viene después mira la cola.
+await abrirCola(false);
+
+/* -------------------------------------------------------- los interruptores */
+
+// Las tres casillas de la cabina: igualar el tempo, mantener el tono y
+// encadenar sola. Se pulsan como se pulsan —un clic en la casilla— y se mira el
+// estado del mezclador, que es quien manda cuando llega la mezcla.
+console.log('los interruptores:');
+const ajustes = () => evaluar(`(async () => (await import('./state.js')).state.mezclador)()`);
+const pulsarCasilla = async (cual) => {
+  await evaluar(`(() => {
+    const c = document.querySelector('[data-mezcla="${cual}"]');
+    if (!c) return false;
+    c.click();
+    return true;
+  })()`);
+  await sleep(350);
+};
+
+for (const cual of ['ajustarTempo', 'estirarTiempo', 'auto']) {
+  const antes = (await ajustes())[cual];
+  await pulsarCasilla(cual);
+  const despues = (await ajustes())[cual];
+  comprobar(`«${cual}» cambia al pulsarla`, despues !== antes, `${antes} → ${despues}`);
+  await pulsarCasilla(cual);
+  const vuelta = (await ajustes())[cual];
+  comprobar(`y vuelve a su sitio`, vuelta === antes, `${despues} → ${vuelta}`);
+  // Y la casilla de la pantalla dice lo mismo que el estado: si no, se ve
+  // apagada mientras el mezclador la da por encendida.
+  const pintada = await evaluar(`document.querySelector('[data-mezcla="${cual}"]').checked`);
+  comprobar('y la pantalla dice lo mismo que el mezclador', pintada === vuelta,
+    `pantalla ${pintada}, mezclador ${vuelta}`);
+}
+
 /* ------------------------------------------------------------- las teclas */
 
 console.log('las teclas:');
@@ -447,6 +538,14 @@ comprobar('«B» preescucha el plato preparado', (await escuchando()) === true);
 await pulsar('b');
 comprobar('y lo deja de preescuchar', (await escuchando()) === false);
 
+// Con la canción colocada lejos del final: las de la prueba duran treinta
+// segundos y a estas alturas se habría acabado sola.
+await evaluar(`(async () => {
+  const p = await import('./player.js');
+  p.seekTo(4);
+  return p.currentTime();
+})()`);
+await sleep(300);
 const donde = await tiempo();
 await pulsar('ArrowRight');
 comprobar('la flecha adelanta cinco segundos', (await tiempo()) - donde > 3,

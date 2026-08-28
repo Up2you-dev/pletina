@@ -1,6 +1,6 @@
 import { $, esc } from './dom.js';
 import { ICO } from './icons.js';
-import { formatTime, plural } from '../../shared/format.js';
+import { formatTempo, formatTime, plural } from '../../shared/format.js';
 import { getTrack, state } from '../state.js';
 
 let actions = {};
@@ -8,6 +8,16 @@ let actions = {};
 export function bindQueue(handlers) {
   actions = handlers;
   const panel = $('#queue-panel');
+  // Arrastrar desde la cola: en la cabina no se ve la biblioteca, así que la
+  // cola es de donde se sacan las canciones para el plato B. Viaja el mismo
+  // formato que usa la biblioteca, para que quien las recoja no distinga.
+  panel.addEventListener('dragstart', (event) => {
+    const item = event.target.closest('.q-item[data-id]');
+    if (!item) return;
+    event.dataTransfer.effectAllowed = 'copy';
+    event.dataTransfer.setData('application/x-pletina-tracks', JSON.stringify([item.dataset.id]));
+    event.dataTransfer.setData('text/plain', item.dataset.id);
+  });
   panel.addEventListener('click', (event) => {
     const tool = event.target.closest('[data-qtool]');
     if (tool) return actions[tool.dataset.qtool]?.();
@@ -22,14 +32,29 @@ export function bindQueue(handlers) {
   });
 }
 
+/**
+ * La segunda línea de una canción en la cola.
+ *
+ * Con el tempo y la tonalidad cuando se saben: en la cola es donde uno decide
+ * qué mueve y qué no, y esa decisión se toma con esos dos números delante. Sin
+ * analizar, la línea es la de siempre y no se inventa nada.
+ */
+const lineaDe = (track) => [
+  track.artist,
+  formatTime(track.duration),
+  formatTempo(track.bpm) ? `${formatTempo(track.bpm)} bpm` : '',
+  track.key || '',
+].filter(Boolean).join(' · ');
+
 const itemHtml = (track, { number, current = false, manualIndex = null }) => {
   if (!track) return '';
   const jump = manualIndex == null ? ` data-jump="${number}"` : '';
-  return `<li class="q-item${current ? ' current' : ''}"${jump}>
+  // Arrastrable: en la cabina, la cola es de donde se saca lo que va al plato B.
+  return `<li class="q-item${current ? ' current' : ''}"${jump} draggable="true" data-id="${esc(track.id)}">
     <span class="q-num">${current ? ICO.play.replace('<svg', '<svg style="width:12px;height:12px;margin:auto"') : number + 1}</span>
     <span>
       <span class="q-title">${esc(track.title)}</span>
-      <span class="q-artist">${esc(track.artist)} · ${formatTime(track.duration)}</span>
+      <span class="q-artist">${esc(lineaDe(track))}</span>
     </span>
     ${manualIndex == null
       ? '<span></span>'

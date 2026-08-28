@@ -4,6 +4,56 @@ Las versiones siguen [SemVer](https://semver.org/lang/es/). Cada una se
 construye desde la pestaña *Actions* del repositorio; una etiqueta `v1.2.3`
 además publica los instaladores sueltos en la página de versiones.
 
+## 4.2.0 — 2026-08-28
+
+La cabina deja de ser una lista cerrada de la que no se conoce el criterio.
+
+### Las tres casillas no funcionaban
+
+- **«Igualar el tempo», «Mantener el tono» y «Encadenar sola» se podían apagar,
+  pero no encender.** Un clic en una casilla lo atendían dos manejadores: el de
+  clics —que no sabe si ha quedado marcada y mandaba «apagar»— y el de cambios,
+  que sí lo sabe pero llegaba tarde, porque el primero ya había repintado la
+  pantalla y se había llevado por delante la casilla y su evento. Resultado:
+  «Encadenar sola» no se podía activar en absoluto. Ahora la casilla la atiende
+  quien sabe leerla, y hay una prueba que pulsa las tres y mira el estado.
+  *(La prueba de la cadena automática no lo cazó porque enciende el ajuste desde
+  el módulo, no desde la casilla: probaba el motor, no el interruptor.)*
+
+### Elegir qué pinchar
+
+- **Arrastrar una canción al plato B.** Desde la lista de la biblioteca o desde
+  la cola —que es lo que se ve estando en la cabina—, se arrastra y se suelta.
+  El plato se enciende al pasarle una canción por encima y dice «suelta para
+  preparar».
+- **Buscar en toda la biblioteca desde la cabina.** Un campo al lado de las
+  sugerencias: lo que se escribe manda sobre el criterio, así que sale lo que
+  pides aunque no cuadre de tempo o esté sin analizar, con su etiqueta —«no
+  cuadra · +42,3 %», «sin analizar»— para que se vea lo que se está cogiendo.
+  Una lista cerrada de la que uno no conoce el criterio no es una ayuda.
+- **El criterio, dicho.** Debajo del título: «primero lo que encaja de
+  tonalidad, luego lo que menos hay que estirar».
+- **Y cuando no hay nada, el motivo de verdad.** Antes decía siempre lo mismo
+  —«nada cuadra con lo que suena»— aunque no sonara nada y aunque la biblioteca
+  estuviera entera sin analizar. Ahora distingue los cuatro casos y dice el que
+  toca.
+- **Analizar desde la cabina.** Un botón con lo que le falta a la biblioteca,
+  ahí mismo. Antes había que ir a la biblioteca a descubrirlo. *(Las dos órdenes
+  que existían para esto no las emitía ningún botón desde la versión 4.0: código
+  muerto que parecía una función.)*
+- Un plato vacío ya no dice «plato vacío» sino qué hacer con él.
+
+### El tempo y el tono, a la vista
+
+- **En las listas**, en su propia columna y ordenable: biblioteca, álbumes,
+  artistas, favoritos, escuchado hace poco y listas. Sin analizar sale una raya
+  y no un cero, que un cero parecería un dato.
+- **En la cola**, en la línea de cada canción: es donde se decide qué se mueve y
+  qué no, y esa decisión se toma con esos dos números delante.
+- En la lista, el tempo va redondo: la rejilla guarda tres decimales porque los
+  necesita para no irse en seis minutos, pero «127,996 bpm» no es un dato para
+  leer de un vistazo.
+
 ## 4.1.0 — 2026-08-27
 
 Tres quejas, tres arreglos: las ondas no se veían, había teclas que no hacían

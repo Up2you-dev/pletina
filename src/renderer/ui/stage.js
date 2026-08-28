@@ -1,7 +1,9 @@
 import { $, $$, coverHtml, esc, gradientFor, popover } from './dom.js';
 import { ICO } from './icons.js';
 import { analizada } from '../../shared/beats.js';
-import { formatTime, formatTotal, formatWhen, plural } from '../../shared/format.js';
+import {
+  formatTempo, formatTime, formatTotal, formatWhen, plural,
+} from '../../shared/format.js';
 import { ORDEN_ALBUMES, ORDEN_ARTISTAS, SORT_KEYS } from '../../shared/sorting.js';
 import { montarCabina, pintarMezclador } from './vista-mezclador.js';
 import {
@@ -45,6 +47,20 @@ function secondaryLabel() {
   return 'Álbum';
 }
 
+/**
+ * El tempo y la tonalidad de una canción, para las listas.
+ *
+ * Van juntos porque juntos se leen: son los dos números con los que se decide
+ * qué va después de qué. Sin analizar sale una raya y no un cero, que un cero
+ * parecería un dato.
+ */
+function musicaDe(track) {
+  const bpm = formatTempo(track.bpm);
+  const tono = track.key || '';
+  if (!bpm && !tono) return '<i class="sin">—</i>';
+  return `${bpm ? `<b>${esc(bpm)}</b>` : ''}${bpm && tono ? '<i class="sep">·</i>' : ''}${tono ? esc(tono) : ''}`;
+}
+
 function rowHtml(track, index, draggable) {
   const selected = state.selection.has(track.id) ? ' selected' : '';
   const missing = track.missing ? ' missing' : '';
@@ -63,6 +79,7 @@ function rowHtml(track, index, draggable) {
       </span>
     </span>
     <span class="t-album">${esc(secondaryOf(track) || '—')}</span>
+    <span class="t-musica">${musicaDe(track)}</span>
     <button class="icon-btn heart${track.favorite ? ' on' : ''}" data-act="fav"
       aria-label="${track.favorite ? 'Quitar de favoritos' : 'Marcar como favorita'}" aria-pressed="${Boolean(track.favorite)}">${ICO.heart}</button>
     <span class="dur">${formatTime(track.duration)}</span>
@@ -78,7 +95,7 @@ function headRow() {
     const arrow = state.sort.key === key ? (state.sort.dir === 'asc' ? ' ↑' : ' ↓') : '';
     return `<span${extra ? ` class="${extra}"` : ''}><button data-sort="${key}"${on}>${label}${arrow}</button></span>`;
   };
-  return `<div class="head-row cols"><span></span><span>#</span>${mark('title', 'Título')}${mark('album', secondaryLabel())}<span></span>${mark('duration', 'Dur.', 'dur')}<span></span></div>`;
+  return `<div class="head-row cols"><span></span><span>#</span>${mark('title', 'Título')}${mark('album', secondaryLabel())}${mark('bpm', 'Tempo · Tono', 'musica')}<span></span>${mark('duration', 'Dur.', 'dur')}<span></span></div>`;
 }
 
 function cardHtml({ key, title, meta, coverId, kind, round = false }) {
@@ -483,7 +500,14 @@ export function bindStage(handlers) {
     if (nivel) return actions.mezclador('zoom', nivel.dataset.zoom);
 
     const mezcla = event.target.closest('[data-mezcla]');
-    if (mezcla) return actions.mezclador(mezcla.dataset.mezcla, mezcla.dataset.valor ?? mezcla.dataset.id);
+    if (mezcla) {
+      // Una casilla se atiende abajo, en `change`, que es quien sabe si ha
+      // quedado marcada. Aquí su valor sería `undefined` —o sea, apagar— y
+      // encima el repintado se llevaba por delante el `change` que venía
+      // detrás: las tres casillas de la cabina se podían apagar y no encender.
+      if (event.target.type === 'checkbox') return undefined;
+      return actions.mezclador(mezcla.dataset.mezcla, mezcla.dataset.valor ?? mezcla.dataset.id);
+    }
 
     const sortButton = event.target.closest('[data-sort]');
     if (sortButton) return actions.sortBy(sortButton.dataset.sort, true);
@@ -587,7 +611,26 @@ export function bindStage(handlers) {
     }
   });
 
+  /* --- soltar una canción en el plato B de la cabina --- */
+  const zonaDeSuelta = (event) => event.target.closest('[data-suelta="b"]');
+  const idSoltado = (dataTransfer) => {
+    try {
+      const crudo = dataTransfer.getData('application/x-pletina-tracks');
+      const ids = crudo ? JSON.parse(crudo) : [];
+      return Array.isArray(ids) ? ids[0] : null;
+    } catch {
+      return null;
+    }
+  };
+
   body.addEventListener('dragover', (event) => {
+    const zona = zonaDeSuelta(event);
+    if (zona && event.dataTransfer.types.includes('application/x-pletina-tracks')) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+      zona.classList.add('encima');
+      return;
+    }
     if (!dragging) return;
     const row = event.target.closest('.row');
     if (!row) return;
@@ -600,19 +643,42 @@ export function bindStage(handlers) {
     }
   });
 
+  body.addEventListener('dragleave', (event) => {
+    const zona = zonaDeSuelta(event);
+    if (zona && !zona.contains(event.relatedTarget)) zona.classList.remove('encima');
+  });
+
   body.addEventListener('drop', (event) => {
-    if (!dragging) return;
+    const zona = zonaDeSuelta(event);
+    if (zona) {
+      const id = idSoltado(event.dataTransfer);
+      zona.classList.remove('encima');
+      if (id) {
+        event.preventDefault();
+        dragging = null;
+        return actions.cargarEnPlatoB(id);
+      }
+    }
+    if (!dragging) return undefined;
     const row = event.target.closest('.row');
-    if (!row) return;
+    if (!row) return undefined;
     event.preventDefault();
     const rect = row.getBoundingClientRect();
     actions.reorderInPlaylist(dragging, row.dataset.id, event.clientY > rect.top + rect.height / 2);
     dragging = null;
+    return undefined;
   });
 
   body.addEventListener('dragend', () => {
     dragging = null;
     for (const el of $$('.row', body)) el.classList.remove('drop-before', 'drop-after', 'dragging');
+    for (const el of $$('[data-suelta]', body)) el.classList.remove('encima');
+  });
+
+  // El buscador del plato B: escribir manda sobre las sugerencias.
+  body.addEventListener('input', (event) => {
+    const buscador = event.target.closest('[data-buscar-candidato]');
+    if (buscador) actions.buscarCandidato(buscador.value);
   });
 
   $('#stage').addEventListener('click', (event) => {

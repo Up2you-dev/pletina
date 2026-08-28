@@ -112,35 +112,76 @@ export function soltarPlatoB() {
  * tonalidad, luego lo que menos hay que estirar, y fuera lo que no se puede
  * cuadrar sin que se note. No es «la siguiente de la lista», es un abanico.
  */
-export function candidatos({ cuantos = 14 } = {}) {
+/**
+ * Cuánto se parecen dos canciones a efectos de pincharlas seguidas.
+ *
+ * El tempo, contando con que media velocidad y el doble también cuadran; y si
+ * las tonalidades se llevan bien. `cuadra` es si se puede sin que se note el
+ * estirón.
+ */
+function encajeCon(sonando, ficha) {
+  if (!sonando?.bpm || !ficha?.bpm) return { ajuste: null, armonica: false, cuadra: false };
+  let razon = sonando.bpm / ficha.bpm;
+  for (const factor of [0.5, 2]) {
+    if (Math.abs(razon * factor - 1) < Math.abs(razon - 1)) razon *= factor;
+  }
+  const ajuste = Math.abs(razon - 1);
+  return {
+    ajuste,
+    armonica: Boolean(sonando.key && ficha.key && tonalidadesCompatibles(sonando.key, ficha.key)),
+    cuadra: ajuste <= LIMITE_AJUSTE,
+  };
+}
+
+/**
+ * Qué se puede pinchar después de lo que suena.
+ *
+ * Sin buscar nada, sugiere: lo que encaja de tonalidad primero y luego lo que
+ * menos hay que estirar. Con una búsqueda, manda la búsqueda y no el criterio
+ * —sale lo que se pide, cuadre o no, esté analizado o no—, porque una lista
+ * cerrada de la que uno no conoce el criterio no es una ayuda: es un muro.
+ */
+export function candidatos({ cuantos = 14, busqueda = '' } = {}) {
   const sonando = fichaDeMezcla(state.currentId);
   const enPlatoB = player.estadoPreparado().id;
-  if (!sonando?.bpm) return [];
+  const texto = busqueda.trim().toLowerCase();
+  // Sin nada sonando no hay con qué comparar, y sugerir por sugerir sería
+  // inventarse un criterio. Buscando, en cambio, siempre se puede buscar.
+  if (!texto && !sonando?.bpm) return [];
 
   const lista = [];
   for (const track of state.tracks) {
     if (track.id === state.currentId || track.id === enPlatoB) continue;
-    if (!analizada(track) || !track.bpm) continue;
-    const ficha = fichaDeMezcla(track.id);
-    if (!ficha?.bpm) continue;
+    if (texto) {
+      const donde = `${track.title ?? ''} ${track.artist ?? ''} ${track.album ?? ''}`.toLowerCase();
+      if (!donde.includes(texto)) continue;
+    } else if (!analizada(track) || !track.bpm) continue;
 
-    let razon = sonando.bpm / ficha.bpm;
-    for (const factor of [0.5, 2]) {
-      if (Math.abs(razon * factor - 1) < Math.abs(razon - 1)) razon *= factor;
-    }
-    const ajuste = Math.abs(razon - 1);
-    if (ajuste > LIMITE_AJUSTE) continue;
-    const armonica = Boolean(sonando.key && ficha.key && tonalidadesCompatibles(sonando.key, ficha.key));
+    const ficha = fichaDeMezcla(track.id);
+    if (!ficha) continue;
+    const encaje = encajeCon(sonando, ficha);
+    if (!texto && !encaje.cuadra) continue;
+
     lista.push({
       ...ficha,
-      ajuste,
-      armonica,
+      ...encaje,
       // La tonalidad pesa más que el tempo: estirar un 3 % no se oye, y una
-      // tonalidad que choca sí.
-      puntos: (armonica ? 2 : 0) + (1 - ajuste / LIMITE_AJUSTE),
+      // tonalidad que choca sí. Lo que no cuadra va al final, pero va.
+      puntos: (encaje.armonica ? 2 : 0)
+        + (encaje.ajuste == null ? -1 : (encaje.cuadra ? 1 - encaje.ajuste / LIMITE_AJUSTE : -encaje.ajuste)),
     });
   }
   return lista.sort((a, b) => b.puntos - a.puntos).slice(0, cuantos);
+}
+
+/**
+ * Cuántas canciones de la biblioteca están sin analizar.
+ *
+ * La cabina lo enseña para poder analizarlas desde aquí: sin análisis no hay
+ * sugerencias, y descubrirlo yendo a la biblioteca es un viaje de más.
+ */
+export function pendientesDeAnalizar() {
+  return state.tracks.filter((track) => !track.missing && !analizada(track)).length;
 }
 
 /**

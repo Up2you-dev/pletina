@@ -4,7 +4,7 @@ import { ESTILOS } from '../../shared/mezcla.js';
 import { formatPorcentaje, formatTime } from '../../shared/format.js';
 import { desfaseEntre } from '../../shared/onda-vista.js';
 import {
-  candidatos, estadoDeMezcla, fichaDeMezcla, prepararPlan,
+  candidatos, estadoDeMezcla, fichaDeMezcla, pendientesDeAnalizar, prepararPlan,
 } from '../mezclador.js';
 import { estadoDePlatos, estadoPreparado, platoActivo } from '../player.js';
 import { ondaCargada, pedirOnda } from '../ondas.js';
@@ -33,6 +33,13 @@ let acciones = {};
 let bucle = null;
 let arrastre = null;
 let zoom = 8;
+/** Lo que se ha escrito en el buscador del plato B. */
+let busqueda = '';
+
+/** Lo escrito en el buscador de la cabina, que manda sobre las sugerencias. */
+export function buscarParaPlatoB(texto) {
+  busqueda = typeof texto === 'string' ? texto : '';
+}
 
 export function bindCabina(handlers) {
   acciones = handlers;
@@ -90,29 +97,51 @@ function cabeceraDeck(ficha, papel) {
   </header>`;
 }
 
-function candidatoHtml(c) {
+/** Qué se le dice a uno del encaje de una canción, en dos palabras. */
+function encajeHtml(c) {
+  if (!c.analizada) return '<i class="ojo">sin analizar</i>';
+  if (c.ajuste == null) return '<i class="ojo">no hay con qué comparar</i>';
   // El porcentaje que se enseña es lo que habría que estirar ESA canción.
   const estiron = Math.round((1 / (1 - c.ajuste) - 1) * 1000) / 10;
-  return `<button class="candidato" data-cargar="${esc(c.id)}" title="Cargar en el plato B">
+  if (!c.cuadra) return `<i class="ojo">no cuadra · ${esc(formatPorcentaje(estiron))}</i>`;
+  return `${c.armonica ? '<i class="pega">encaja de tono</i>' : ''}<i>${
+    esc(c.ajuste < 0.001 ? 'mismo tempo' : formatPorcentaje(estiron))}</i>`;
+}
+
+function candidatoHtml(c) {
+  return `<button class="candidato${c.cuadra ? '' : ' floja'}" data-cargar="${esc(c.id)}"
+    draggable="true" data-id="${esc(c.id)}" title="Cargar en el plato B">
     ${coverHtml(c, 'candidato-caratula')}
     <span class="candidato-texto">
       <strong>${esc(c.titulo)}</strong>
       <span>${esc(c.artista)}</span>
     </span>
-    <span class="candidato-datos">${esc(conComa(c.bpm))} bpm · ${esc(c.tonalidad || c.key || '—')}</span>
-    <span class="candidato-encaje">
-      ${c.armonica ? '<i class="pega">encaja de tono</i>' : ''}
-      <i>${esc(c.ajuste < 0.001 ? 'mismo tempo' : formatPorcentaje(estiron))}</i>
-    </span>
+    <span class="candidato-datos">${c.bpm ? `${esc(conComa(c.bpm))} bpm` : 'sin tempo'} · ${esc(c.tonalidad || c.key || '—')}</span>
+    <span class="candidato-encaje">${encajeHtml(c)}</span>
   </button>`;
 }
 
-/** Por qué no hay nada que sugerir, cuando no lo hay. */
+/** El criterio, dicho en una línea: una lista sin criterio no se puede usar. */
 function pistaDeCandidatos(lista) {
-  if (lista.length) return 'lo que encaja de tonalidad primero, y luego lo que menos hay que estirar';
-  const analizadas = state.tracks.filter((t) => t.bpm).length;
-  if (analizadas < 2) return 'analiza tu biblioteca para tener sugerencias';
-  return 'nada más de tu biblioteca cuadra con lo que suena sin estirarlo demasiado';
+  if (busqueda.trim()) return 'buscando en toda la biblioteca · manda lo que escribes, no el criterio';
+  if (lista.length) return 'primero lo que encaja de tonalidad, luego lo que menos hay que estirar';
+  return 'o busca cualquier canción, o arrastra una aquí desde la cola';
+}
+
+/**
+ * Y por qué no hay nada, cuando no hay nada.
+ *
+ * Antes decía siempre lo mismo —«nada cuadra con lo que suena»— aunque no
+ * sonara nada y aunque la biblioteca estuviera sin analizar. Un motivo falso es
+ * peor que ninguno: manda a buscar el problema donde no está.
+ */
+function porQueNoHay() {
+  if (busqueda.trim()) return 'Nada en tu biblioteca se llama así.';
+  if (!state.currentId) return 'Pon algo a sonar y aquí saldrá lo que le va detrás. O busca una canción y arrástrala al plato B.';
+  const sonando = fichaDeMezcla(state.currentId);
+  if (!sonando?.bpm) return 'La canción que suena está sin analizar: sin su tempo no hay con qué comparar.';
+  if (pendientesDeAnalizar() >= state.tracks.length) return 'Tu biblioteca está sin analizar: sin tempo no se puede sugerir nada.';
+  return 'Nada de lo analizado cuadra con lo que suena sin estirarlo más de un 12 %. Búscala arriba y ponla igual: tú mandas.';
 }
 
 export function pintarMezclador() {
@@ -124,7 +153,8 @@ export function pintarMezclador() {
   const entrante = fichaDelPlato('b');
   const avisos = preparado?.plan?.avisos ?? [];
   const resumen = preparado?.resumen ?? '';
-  const lista = candidatos();
+  const lista = candidatos({ busqueda });
+  const pendientes = pendientesDeAnalizar();
 
   return `<div class="cabina">
     <section class="deck deck-a">
@@ -141,7 +171,7 @@ export function pintarMezclador() {
       <span class="hint">arrastra una onda para empujar el plato</span>
     </div>
 
-    <section class="deck deck-b${entrante ? '' : ' vacia'}">
+    <section class="deck deck-b${entrante ? '' : ' vacia'}" data-suelta="b">
       <canvas class="onda zoom" data-onda="zoom-b"></canvas>
       <canvas class="onda general" data-onda="general-b"></canvas>
       ${cabeceraDeck(entrante, 'B · preparas')}
@@ -218,8 +248,15 @@ export function pintarMezclador() {
       <div class="candidatos-cab">
         <span class="etiqueta">Qué pinchar después</span>
         <span class="hint">${esc(pistaDeCandidatos(lista))}</span>
+        <span class="candidatos-tools">
+          <input type="search" class="buscar-candidato" data-buscar-candidato
+            placeholder="Buscar en la biblioteca…" value="${esc(busqueda)}" aria-label="Buscar una canción para el plato B">
+          ${pendientes ? `<button class="btn btn-ghost pequeno" data-mezcla="analizar-pendientes">
+            ${ICO.waves}Analizar ${pendientes}</button>` : ''}
+        </span>
       </div>
       <div class="candidatos-lista">${lista.map(candidatoHtml).join('')}</div>
+      ${lista.length ? '' : `<p class="candidatos-vacio">${esc(porQueNoHay())}</p>`}
     </div>
   </div>`;
 }
@@ -267,7 +304,7 @@ function pintarCuadro(raiz) {
     // Un hueco en blanco no dice nada. Si no hay onda que pintar, el lienzo
     // explica por qué y qué hacer, que es lo único que hay que saber ahí.
     let mensaje = '';
-    if (!ficha?.id) mensaje = cual === 'b' ? 'plato vacío' : 'no suena nada';
+    if (!ficha?.id) mensaje = cual === 'b' ? 'arrastra aquí una canción, o elígela abajo' : 'no suena nada';
     else if (!ondas) {
       mensaje = ficha.analizada ? 'sin onda guardada · vuelve a analizarla' : 'sin analizar · pulsa «Analizar»';
     }

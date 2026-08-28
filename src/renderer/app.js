@@ -45,12 +45,11 @@ import {
   mezclarAhora,
   platoB,
   ponerElUnoEnB,
-  prepararPlan,
   saltarCompasesEnB,
   soltarPlatoB,
   terminarMezcla,
 } from './mezclador.js';
-import { bindCabina, cambiarZoom } from './ui/vista-mezclador.js';
+import { bindCabina, buscarParaPlatoB, cambiarZoom } from './ui/vista-mezclador.js';
 import {
   bindTransport,
   helpPopover,
@@ -682,16 +681,12 @@ const actions = {
         });
         return;
       }
-      case 'analizar-par': {
-        const preparado = prepararPlan();
-        const ids = [preparado?.saliente?.id, preparado?.entrante?.id].filter(Boolean);
-        actions.analizar(ids).then(() => renderStage());
-        return;
-      }
-      case 'analizar-cola': {
-        // Todo lo que espera: lo puesto a mano y lo que queda de la lista.
-        const ids = [state.currentId, ...state.queue.manual, ...state.queue.order.slice(state.queue.index)]
-          .filter(Boolean);
+      case 'analizar-pendientes': {
+        // Todo lo que le falta a la biblioteca, desde la cabina: sin análisis no
+        // hay sugerencias ni rejilla, y descubrirlo teniendo que ir a la
+        // biblioteca es un viaje de más justo cuando estás pinchando.
+        const ids = state.tracks.filter((track) => !track.missing && !analizada(track)).map((t) => t.id);
+        if (!ids.length) return;
         actions.analizar(ids).then(() => renderStage());
         return;
       }
@@ -715,6 +710,20 @@ const actions = {
   },
 
   /** Cargar una canción en el plato B: es la manera de ir más allá de la cola. */
+  /**
+   * El buscador del plato B.
+   *
+   * Se vuelve a pintar en cada tecla, así que hay que devolverle el foco: sin
+   * esto se escribe una letra y el cursor se cae del campo.
+   */
+  buscarCandidato(texto) {
+    buscarParaPlatoB(texto);
+    renderStage();
+    const campo = document.querySelector('[data-buscar-candidato]');
+    if (!campo) return;
+    campo.focus();
+    campo.setSelectionRange(campo.value.length, campo.value.length);
+  },
   cargarEnPlatoB(id) {
     const resultado = cargarEnPlatoB(id);
     if (!resultado.ok) {

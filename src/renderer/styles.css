@@ -217,7 +217,12 @@ select.sort:hover{border-color:var(--muted-2)}
 
 /* ---------- listas ---------- */
 .list{list-style:none; margin:0; padding:0 12px}
-.cols{display:grid; grid-template-columns:22px 34px minmax(0,1fr) minmax(0,.55fr) 34px 58px 30px; gap:10px; align-items:center}
+.cols{display:grid; grid-template-columns:22px 34px minmax(0,1fr) minmax(0,.55fr) 104px 34px 58px 30px; gap:10px; align-items:center}
+.t-musica{font-size:12px; color:var(--muted); white-space:nowrap; font-variant-numeric:tabular-nums}
+.t-musica b{font-weight:600; color:var(--text)}
+.t-musica .sep{font-style:normal; opacity:.5; margin:0 4px}
+.t-musica .sin{font-style:normal; opacity:.45}
+.head-row .musica{text-align:left; white-space:nowrap}
 .head-row{padding:0 12px 7px; margin:0 12px 4px; border-bottom:1px solid var(--line-soft); font-family:var(--ff-display); font-size:10.5px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--muted-2)}
 .head-row .dur{text-align:right}
 .head-row button{border:0; background:transparent; color:inherit; font:inherit; letter-spacing:inherit; text-transform:inherit; cursor:pointer; padding:0; text-align:left}
@@ -355,7 +360,7 @@ select.sort:hover{border-color:var(--muted-2)}
     grid-template-areas:'a mesa' 'entre mesa' 'b mesa' 'candidatos candidatos'}
   .cabina .mesa{height:100%}
 }
-.deck{display:grid; gap:6px; border:1px solid var(--line); border-radius:var(--r); background:var(--panel);
+.deck{position:relative; display:grid; gap:6px; border:1px solid var(--line); border-radius:var(--r); background:var(--panel);
   padding:10px 12px; align-content:start; align-self:start}
 .deck.vacia{border-style:dashed; background:transparent}
 .deck-cab{display:flex; align-items:center; gap:12px; min-width:0}
@@ -423,6 +428,21 @@ select.sort:hover{border-color:var(--muted-2)}
 .candidato-encaje{display:flex; flex-direction:column; align-items:flex-end; gap:2px; flex:none}
 .candidato-encaje i{font-style:normal; font-family:var(--ff-mono); font-size:10.5px; color:var(--muted-2)}
 .candidato-encaje i.pega{color:var(--accent); background:var(--accent-soft); border-radius:99px; padding:1px 7px}
+.candidato-encaje i.ojo{color:var(--muted-2); opacity:.8}
+/* Lo que no cuadra se enseña, pero se ve que no cuadra. */
+.candidato.floja{opacity:.62; border-style:dashed}
+.candidato.floja:hover{opacity:1}
+.candidatos-cab .candidatos-tools{margin-left:auto; display:flex; align-items:center; gap:8px}
+.buscar-candidato{width:min(260px, 40vw); padding:5px 10px; border-radius:99px; font:inherit; font-size:12.5px;
+  border:1px solid var(--line); background:var(--panel-2); color:var(--text)}
+.buscar-candidato:focus{outline:none; border-color:var(--accent)}
+.candidatos-vacio{margin:0; padding:12px 14px; border:1px dashed var(--line); border-radius:var(--r-sm);
+  color:var(--muted); font-size:13px; line-height:1.5; background:var(--panel)}
+/* El plato B admite que le suelten canciones encima. */
+.deck[data-suelta]{transition:border-color .15s, background .15s}
+.deck[data-suelta].encima{border-color:var(--accent); background:var(--accent-soft)}
+.deck[data-suelta].encima::after{content:'suelta para preparar'; position:absolute; inset:auto 0 8px 0; text-align:center;
+  font-family:var(--ff-mono); font-size:11px; color:var(--accent); letter-spacing:.06em; pointer-events:none}
 
 @media (max-width:900px){
   .candidatos-lista{grid-template-columns:1fr}
@@ -526,7 +546,7 @@ select.sort:hover{border-color:var(--muted-2)}
 }
 @media (max-width:720px){
   .cols{grid-template-columns:22px 34px minmax(0,1fr) 34px 54px 28px}
-  .t-album{display:none}
+  .t-album,.t-musica,.head-row .musica{display:none}
   .transport-inner{grid-template-columns:minmax(0,1fr); gap:8px; padding:9px 12px}
   .right-tools{display:none}
   .search{max-width:none}

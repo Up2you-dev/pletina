@@ -167,6 +167,13 @@ empieza a sonar de verdad —casi ningún archivo empieza en el segundo cero—,
 puede preescuchar, mover arrastrando y quitar. La cola sigue estando, pero deja
 de mandar: eso es lo que separa una cabina de una lista de reproducción.
 
+**Qué se pincha después lo decides tú.** Las sugerencias dicen su criterio
+—primero lo que encaja de tonalidad, luego lo que menos hay que estirar— y al
+lado hay un buscador de toda la biblioteca: lo que escribes manda sobre el
+criterio, y lo que no cuadra sale igual, con su etiqueta, para que se vea lo que
+se está cogiendo. También se arrastra: una canción de la lista o de la cola se
+suelta encima del plato B y se queda preparada.
+
 **Arrastrar una onda es empujar el plato.** En el que suena se traduce en un
 empujón —acelerar o frenar un pelo durante un momento— porque saltar sonaría a
 corte; en el que preparas, que está parado, se mueve y ya. Con `,` y `.` se hace

@@ -30,6 +30,15 @@ export function plural(n, one, many) {
  * El tempo y la tonalidad solo aparecen cuando se han analizado.
  */
 /**
+ * Un tempo como se dice: redondo, sin decimales de adorno.
+ *
+ * La rejilla guarda tres decimales porque los necesita para no irse en seis
+ * minutos, pero «127,996 bpm» no es un dato para leer de un vistazo en una
+ * lista: es ruido. En pantalla, 128.
+ */
+export const formatTempo = (bpm) => (Number(bpm) > 0 ? String(Math.round(Number(bpm))) : '');
+
+/**
  * Un porcentaje como se escribe en castellano: coma decimal, sin ceros de
  * adorno y con el signo cuando suma. «+1,6 %», «-5 %», «0 %».
  */
