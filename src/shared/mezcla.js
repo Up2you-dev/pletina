@@ -180,18 +180,28 @@ export function planDeMezcla({
     eventos.push({ en: 0, plato: 'entrante', parametro: 'medio', a: MEDIO_FUERA, rampa: 0.05 });
     eventos.push({ en: 0, plato: 'entrante', parametro: 'ganancia', desde: 0, a: 1, rampa: en(duracionReal * 0.45), curva: 'potencia' });
     // El cambio ocurre en un solo tiempo, seco, a mitad de transición.
-    eventos.push({ en: mitad, plato: 'saliente', parametro: 'grave', a: GRAVE_FUERA, rampa: tiempo });
-    eventos.push({ en: mitad, plato: 'entrante', parametro: 'grave', a: 0, rampa: tiempo });
-    eventos.push({ en: mitad, plato: 'entrante', parametro: 'medio', a: 0, rampa: tiempo });
+    //
+    // Cada rampa dice de DÓNDE sale, y no es un detalle: quien la ejecuta no
+    // puede preguntarle al parámetro cuánto valdrá dentro de siete segundos, y
+    // preguntárselo por su valor de ahora convertía el cambio de graves en un
+    // escalón de veintiséis decibelios en una muestra —un chasquido justo en el
+    // uno del compás central, el momento más expuesto de la mezcla—.
+    eventos.push({ en: mitad, plato: 'saliente', parametro: 'grave', desde: 0, a: GRAVE_FUERA, rampa: tiempo });
+    eventos.push({ en: mitad, plato: 'entrante', parametro: 'grave', desde: GRAVE_FUERA, a: 0, rampa: tiempo });
+    eventos.push({ en: mitad, plato: 'entrante', parametro: 'medio', desde: MEDIO_FUERA, a: 0, rampa: tiempo });
     // Y la saliente se va por arriba en la segunda mitad.
-    eventos.push({ en: mitad, plato: 'saliente', parametro: 'medio', a: -6, rampa: en(duracionReal - mitad) });
+    eventos.push({ en: mitad, plato: 'saliente', parametro: 'medio', desde: 0, a: -6, rampa: en(duracionReal - mitad) });
     eventos.push({ en: mitad, plato: 'saliente', parametro: 'ganancia', a: 0, rampa: en(duracionReal - mitad), curva: 'potencia' });
   }
 
-  // Al terminar, la que entra queda como una canción normal.
-  eventos.push({ en: duracionReal, plato: 'entrante', parametro: 'grave', a: 0, rampa: 0.05 });
-  eventos.push({ en: duracionReal, plato: 'entrante', parametro: 'medio', a: 0, rampa: 0.05 });
-  eventos.push({ en: duracionReal, plato: 'entrante', parametro: 'ganancia', a: 1, rampa: 0.05 });
+  // Al terminar, la que entra queda como una canción normal. Sale de donde la
+  // dejó el cambio de graves —ya en su sitio—, así que estas tres son un
+  // seguro y no un movimiento: sin decir de dónde salen, la última dejaba la
+  // ganancia en cero durante cincuenta milisegundos y se oía un hueco justo al
+  // acabar la transición.
+  eventos.push({ en: duracionReal, plato: 'entrante', parametro: 'grave', desde: 0, a: 0, rampa: 0.05 });
+  eventos.push({ en: duracionReal, plato: 'entrante', parametro: 'medio', desde: 0, a: 0, rampa: 0.05 });
+  eventos.push({ en: duracionReal, plato: 'entrante', parametro: 'ganancia', desde: 1, a: 1, rampa: 0.05 });
   eventos.sort((a, b) => a.en - b.en);
 
   return {

@@ -309,6 +309,11 @@ comprobar('con las tres bandas de distinto color', colores >= 3, `${colores} col
 // temas: es lo que decide si el ojo la ve.
 const contrasteDeRejilla = async (cual, tema) => {
   await evaluar(`(() => { document.documentElement.setAttribute('data-theme', '${tema}'); return true; })()`);
+  // Con la música parada: el plato que suena se mueve entre que se calcula
+  // dónde caen las líneas y que se leen los píxeles, y entonces se mide el
+  // color de otro sitio. Lo que se comprueba aquí es el contraste, no el
+  // movimiento.
+  await evaluar(`(async () => { (await import('./player.js')).pause(); })()`);
   await sleep(700);
   return evaluar(`(async () => {
     const m = await import('./mezclador.js');
@@ -358,7 +363,8 @@ for (const tema of ['light', 'dark']) {
   }
 }
 await evaluar(`(() => { document.documentElement.setAttribute('data-theme', 'dark'); return true; })()`);
-await sleep(400);
+await evaluar(`(async () => { (await import('./player.js')).start(); })()`);
+await sleep(600);
 
 // Y el ×2 de la cabina, pulsándolo como se pulsa: el botón tiene que estar
 // vivo, la orden llegar y el número cambiar en la ficha del plato.

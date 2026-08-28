@@ -314,6 +314,11 @@ function fijarGanancia(p, valor) {
 }
 
 export function load(id, { play = true, position = 0 } = {}) {
+  // La preescucha se apaga antes de tocar nada: si no, el plato preparado se
+  // quedaba sonando a media voz encima de la canción nueva, sin ningún control
+  // a la vista que lo explicara —el botón vive en la cabina, que puede ni estar
+  // abierta— y con el botón encendido mintiendo.
+  if (estadoPreparado().escuchando) escucharPreparado(false);
   const track = getTrack(id);
   if (!track) return false;
   cancelarFundido();
@@ -478,7 +483,9 @@ export function mezclar(id, plan, { estirarTiempo = true } = {}) {
   // correcto. Se repite con los metadatos por si la carga vuelve a pisarlo.
   const preparar = () => aplicarTempo(entrante);
   preparar();
-  entrante.el.addEventListener('loadedmetadata', preparar, { once: true });
+  // Solo cuando de verdad va a haber una carga: sobre un plato ya precargado el
+  // evento no llega nunca y el oyente se quedaba puesto, uno por mezcla.
+  if (!yaPreparado) entrante.el.addEventListener('loadedmetadata', preparar, { once: true });
 
   motor.limpiarPlato(entrante.nodos);
   fijarGanancia(entrante, 0);
@@ -547,11 +554,26 @@ export function mezclar(id, plan, { estirarTiempo = true } = {}) {
   };
   setTimeout(ajustarFase, (retardoArranque + 0.35) * 1000);
 
-  activo = 1 - activo;
-  state.currentId = id;
-  avisadoFinal = false;
-  hooks.onTrack(track);
-  setMediaSession(track);
+  /**
+   * El mando pasa al otro plato EN EL PINCHAZO, no al programar la mezcla.
+   *
+   * Entre pulsar «Mezclar ahora» y el pinchazo pueden pasar siete segundos en
+   * los que no ha sonado nada nuevo. Cambiando el mando al programar, en esa
+   * ventana el Espacio no pausaba: se llevaba por delante la canción que sonaba
+   * y saltaba a la siguiente, y la pantalla enseñaba el título de una canción
+   * que todavía no había entrado. Cuesta imaginar algo que se sienta más raro
+   * que pulsar pausa y que cambie la canción.
+   */
+  const darElMando = () => {
+    if (!esMia()) return;
+    activo = 1 - activo;
+    state.currentId = id;
+    avisadoFinal = false;
+    hooks.onTrack(track);
+    setMediaSession(track);
+  };
+  if (espera > 0.05) setTimeout(darElMando, espera * 1000);
+  else darElMando();
   hooks.onMezcla?.({ plan, en: 'inicio' });
 
   const finaliza = (espera + plan.duracion + 0.25) * 1000;
@@ -591,7 +613,10 @@ function programar({ entrante, saliente }, evento, t0) {
   }
 
   parametro.cancelScheduledValues(cuando);
-  parametro.setValueAtTime(parametro.value, cuando);
+  // `desde` lo dice el plan. Anclar en `parametro.value` era anclar en el valor
+  // de AHORA, no en el que tendrá cuando le toque: la rampa salía del sitio
+  // equivocado y lo que debía ser un tiempo de transición era un salto.
+  parametro.setValueAtTime(evento.desde !== undefined ? evento.desde : parametro.value, cuando);
   parametro.linearRampToValueAtTime(evento.a, cuando + rampa);
 }
 
@@ -607,6 +632,9 @@ export function encadenar(id, { segundos = 6 } = {}) {
   if (!track) return false;
 
   encadenando = true;
+  mezclaActual += 1;
+  const mio = mezclaActual;
+  const esMio = () => encadenando && mezclaActual === mio;
   entrante.id = id;
   entrante.el.src = window.pletina.media.track(id);
   aplicarTempo(entrante);
@@ -630,7 +658,11 @@ export function encadenar(id, { segundos = 6 } = {}) {
   setMediaSession(track);
 
   setTimeout(() => {
-    if (!encadenando) return;
+    // Con su número de mezcla, como la transición larga. Sin él, el
+    // temporizador de un encadenado viejo cerraba el de otro: la ganancia de la
+    // entrante saltaba a uno a mitad del fundido y la saliente se quedaba
+    // sonando a volumen cero hasta el final del archivo, decodificando.
+    if (!esMio()) return;
     encadenando = false;
     saliente.el.pause();
     saliente.el.removeAttribute('src');
