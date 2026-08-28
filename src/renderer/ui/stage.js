@@ -4,6 +4,7 @@ import { analizada } from '../../shared/beats.js';
 import {
   formatTempo, formatTime, formatTotal, formatWhen, plural,
 } from '../../shared/format.js';
+import { esReproducible } from '../../shared/audio-files.js';
 import { ORDEN_ALBUMES, ORDEN_ARTISTAS, SORT_KEYS } from '../../shared/sorting.js';
 import { montarCabina, pintarMezclador } from './vista-mezclador.js';
 import {
@@ -171,7 +172,9 @@ function toolbarHtml(tracks) {
     const objetivo = state.selection.size > 1
       ? tracks.filter((track) => state.selection.has(track.id))
       : tracks;
-    const faltan = objetivo.filter((track) => !analizada(track)).length;
+    // Sin las que este equipo no puede decodificar: contarlas dejaba el botón
+    // pidiendo analizar unas canciones que nunca iban a poder analizarse.
+    const faltan = objetivo.filter((track) => esReproducible(track) && !analizada(track)).length;
     parts.push(`<button class="btn" data-tool="analizar" title="Tempo, tonalidad y rejilla de compases">
       ${ICO.waves}${faltan ? `Analizar ${faltan}` : 'Volver a analizar'}</button>`);
   }

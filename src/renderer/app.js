@@ -32,6 +32,7 @@ import { bindStage, refreshRows, renderStage, renderStageHead, scrollToCurrent }
 import { bindQueue, renderQueue } from './ui/queue.js';
 import { abrirSonido, bindSonido, cerrarSonido } from './ui/sonido.js';
 import { alternarVisualizador, montarVisualizador } from './ui/visualizador.js';
+import { esReproducible } from '../shared/audio-files.js';
 import { analizada, rejillaVigente } from '../shared/beats.js';
 import { analizarPista } from './analisis.js';
 import { analizandoLote, analizarLote, cancelarLote } from './analisis-lote.js';
@@ -432,7 +433,7 @@ const actions = {
       forzar,
       // El análisis ya no usa el contexto de reproducción: decodifica a una
       // tasa fija para que el resultado no dependa de la tarjeta de sonido.
-      analizar: (id) => analizarPista(id),
+      analizar: (id) => analizarPista(id, getTrack(id)),
       guardar: async (id, resultado) => {
         await api.track.analysis(id, resultado);
         // La onda de antes ya no vale: se vuelve a pedir cuando haga falta.
@@ -459,11 +460,22 @@ const actions = {
     if (silencio || !resumen?.ok) return resumen;
 
     const primera = ids.length === 1 ? getTrack(ids[0]) : null;
+    // Los fallos van primero. Antes se anunciaba éxito con el bpm de la
+    // ETIQUETA —un dato que ya venía en el archivo— aunque la decodificación
+    // hubiera reventado: la aplicación decía «128 pulsaciones · Am» y luego no
+    // había ni rejilla ni onda. Decir que sí y enseñar que no es la peor
+    // manera de fallar.
+    if (resumen.fallidas && !resumen.hechas) {
+      toast(resumen.fallidas === 1
+        ? `No he podido analizar esa canción${resumen.motivos?.[0] ? `: ${resumen.motivos[0]}` : '.'}`
+        : `No he podido analizar ${resumen.fallidas} canciones. Suele ser el formato: AIFF, WMA, ALAC y APE no se pueden decodificar aquí.`);
+      return resumen;
+    }
     if (resumen.cancelado) {
       toast(`Análisis parado · ${plural(resumen.hechas, 'canción analizada', 'canciones analizadas')}`);
     } else if (!resumen.total && resumen.saltadas) {
       toast(resumen.saltadas === 1 ? 'Esa canción ya estaba analizada.' : 'Ya estaban todas analizadas.');
-    } else if (primera?.bpm) {
+    } else if (primera && rejillaVigente(primera.rejilla)) {
       toast(`${Math.round(primera.bpm)} pulsaciones por minuto${primera.tonalidad ? ` · ${primera.tonalidad}` : ''}`);
     } else if (resumen.hechas) {
       const saltadas = resumen.saltadas ? ` · ${resumen.saltadas} ya lo estaban` : '';
@@ -734,7 +746,9 @@ const actions = {
         // Todo lo que le falta a la biblioteca, desde la cabina: sin análisis no
         // hay sugerencias ni rejilla, y descubrirlo teniendo que ir a la
         // biblioteca es un viaje de más justo cuando estás pinchando.
-        const ids = state.tracks.filter((track) => !track.missing && !analizada(track)).map((t) => t.id);
+        const ids = state.tracks
+          .filter((track) => !track.missing && esReproducible(track) && !analizada(track))
+          .map((t) => t.id);
         if (ids.length) {
           actions.analizar(ids).then(() => renderStage());
           return;

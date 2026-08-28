@@ -2,6 +2,7 @@ import { LIMITE_AJUSTE, daTiempoAMezclar, describirPlan, planDeMezcla } from '..
 import {
   analizada, anclarElUno, duracionDeCompases, rejillaVigente, siguienteCompas, tempoDeGolpes,
 } from '../shared/beats.js';
+import { esReproducible, nombreDeFormato } from '../shared/audio-files.js';
 import { tonalidadesCompatibles } from '../shared/musica.js';
 import { advance } from '../shared/queue.js';
 import { getTrack, state } from './state.js';
@@ -68,6 +69,10 @@ export function fichaDeMezcla(id) {
     // analizar, y ofrecer «Analizar» aquí manda a repetir un trabajo que ya se
     // hizo y va a salir igual.
     sinPulso: analizada(track) && !rejillaVigente(rejilla),
+    // Y si este equipo no sabe decodificar el formato, se dice: es la
+    // diferencia entre «pulsa Analizar» —que no va a servir de nada— y saber
+    // por qué esta canción no va a tener rejilla nunca.
+    formatoMudo: esReproducible(track) ? '' : nombreDeFormato(track),
   };
 }
 
@@ -188,7 +193,11 @@ export function candidatos({ cuantos = 14, busqueda = '' } = {}) {
  * sugerencias, y descubrirlo yendo a la biblioteca es un viaje de más.
  */
 export function pendientesDeAnalizar() {
-  return state.tracks.filter((track) => !track.missing && !analizada(track)).length;
+  // Sin contar las que este equipo no puede decodificar: el contador no bajaba
+  // nunca y el aviso de «biblioteca sin analizar» se quedaba fijo para siempre.
+  return state.tracks.filter(
+    (track) => !track.missing && esReproducible(track) && !analizada(track),
+  ).length;
 }
 
 /**

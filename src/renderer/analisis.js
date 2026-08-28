@@ -6,6 +6,7 @@ import {
 } from '../shared/musica.js';
 import { ANALISIS_VERSION, FUERZA_MINIMA, rejillaCompleta } from '../shared/beats.js';
 import { calcularOndas, empaquetar } from '../shared/ondas.js';
+import { esReproducible, nombreDeFormato } from '../shared/audio-files.js';
 
 /**
  * Analiza una canción para sacarle tempo y tonalidad.
@@ -67,11 +68,27 @@ async function decodificar(datos) {
   return offline.decodeAudioData(datos);
 }
 
-export async function analizarPista(id) {
+export async function analizarPista(id, ficha = null) {
+  // Antes de leer nada: hay formatos que este programa importa —para quedarse
+  // con sus etiquetas y su carátula— y no sabe decodificar. Analizarlos era
+  // leer el archivo entero de disco para tirarlo, en cada pasada y para
+  // siempre, sin decir nunca por qué.
+  if (ficha && !esReproducible(ficha)) {
+    const error = new Error(`${nombreDeFormato(ficha)}: este programa no sabe decodificar ese formato`);
+    error.motivo = 'formato';
+    throw error;
+  }
   const respuesta = await fetch(window.pletina.media.track(id));
   if (!respuesta.ok) throw new Error('no he podido leer el archivo');
   const datos = await respuesta.arrayBuffer();
-  const buffer = await decodificar(datos);
+  let buffer;
+  try {
+    buffer = await decodificar(datos);
+  } catch {
+    const error = new Error(`${nombreDeFormato(ficha ?? {})}: el audio no se ha podido decodificar`);
+    error.motivo = 'formato';
+    throw error;
+  }
 
   const { muestras, tasa } = reducir(buffer);
 

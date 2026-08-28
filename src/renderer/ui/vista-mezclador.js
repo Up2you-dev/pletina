@@ -58,6 +58,7 @@ const conComa = (numero, decimales = 1) => numero.toFixed(decimales).replace('.'
  * decirlo antes, no después.
  */
 function fiabilidad(rejilla, ficha) {
+  if (ficha?.formatoMudo) return `${ficha.formatoMudo} · este equipo no sabe decodificarlo`;
   // Analizada y sin pulso: se dice, porque no es lo mismo que estar sin
   // analizar y el usuario tiene que saber por qué no hay rejilla que mirar.
   if (ficha?.sinPulso) return 'sin pulso claro · no hay rejilla que cuadrar';
@@ -94,7 +95,7 @@ function cabeceraDeck(ficha, papel) {
       <span class="deck-datos" data-datos="${esc(papel[0])}">${datosDe(ficha)}</span>
     </span>
     <span class="deck-reloj" data-reloj="${esc(papel[0])}"></span>
-    ${ficha.analizada || ficha.sinPulso
+    ${ficha.formatoMudo ? '' : ficha.analizada || ficha.sinPulso
     // Ya analizada: el botón se queda en icono. Sigue estando —es el que se
     // busca cuando algo no cuadra— pero no le come el sitio a los datos, que
     // es lo que se mira todo el rato.
@@ -317,7 +318,8 @@ function pintarCuadro(raiz) {
     let mensaje = '';
     if (!ficha?.id) mensaje = cual === 'b' ? 'arrastra aquí una canción, o elígela abajo' : 'no suena nada';
     else if (!ondas) {
-      if (ficha.sinPulso) mensaje = 'sin pulso claro · esta canción no tiene rejilla';
+      if (ficha.formatoMudo) mensaje = `${ficha.formatoMudo} · este equipo no sabe decodificar este formato`;
+      else if (ficha.sinPulso) mensaje = 'sin pulso claro · esta canción no tiene rejilla';
       else mensaje = ficha.analizada ? 'sin onda guardada · vuelve a analizarla' : 'sin analizar · pulsa «Analizar»';
     }
     const estado = enPlato[cual];

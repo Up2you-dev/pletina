@@ -49,6 +49,8 @@ export async function analizarLote(ids, {
     total: pendientes.length,
     hechas: 0,
     fallidas: 0,
+    // Por qué han fallado, para poder decirlo en vez de contar bajas.
+    motivos: [],
     saltadas: lista.length - pendientes.length,
     cancelado: false,
     titulo: '',
@@ -69,9 +71,11 @@ export async function analizarLote(ids, {
       const resultado = await analizar(id);
       await guardar(id, resultado);
       trabajo.hechas += 1;
-    } catch {
-      // Una canción rota no puede tumbar el lote: se cuenta y se sigue.
+    } catch (error) {
+      // Una canción rota no puede tumbar el lote: se cuenta y se sigue. Pero se
+      // apunta el motivo: «no he podido» sin decir por qué no ayuda a nadie.
       trabajo.fallidas += 1;
+      if (trabajo.motivos.length < 4 && error?.message) trabajo.motivos.push(error.message);
     }
     // Un respiro entre canciones: la ventana tiene que seguir respondiendo.
     await new Promise((listo) => { setTimeout(listo, 0); });

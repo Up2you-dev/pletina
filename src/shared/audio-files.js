@@ -5,6 +5,48 @@ export const AUDIO_EXTENSIONS = [
   '.wav', '.wave', '.wma', '.aif', '.aiff', '.aifc', '.caf', '.ape', '.wv', '.mpc',
 ];
 
+/**
+ * Lo que este programa sabe SONAR, que no es lo mismo que lo que sabe leer.
+ *
+ * Las etiquetas y la carátula se leen de casi cualquier formato; el audio lo
+ * decodifica Chromium, y Chromium no trae ni AIFF, ni WMA, ni ALAC, ni APE, ni
+ * WavPack, ni Musepack. Preguntado directamente a este Electron con
+ * `canPlayType`, esos siete contestan «no».
+ *
+ * La distinción importa porque sin ella esas canciones entraban en la
+ * biblioteca, salían en la cabina como «sin analizar · pulsa Analizar», y por
+ * mucho que se pulsara no había manera: la decodificación fallaba en silencio,
+ * el contador de pendientes no bajaba nunca y en ningún sitio se nombraba la
+ * causa. El usuario concluía, con razón, que la rejilla estaba rota.
+ */
+const REPRODUCIBLES = new Set([
+  '.mp3', '.m4a', '.m4b', '.mp4', '.aac', '.flac', '.ogg', '.oga', '.opus', '.wav', '.wave',
+]);
+
+/** Códecs que van dentro de un contenedor que sí se reproduce, pero no suenan. */
+const CODECS_MUDOS = new Set(['alac', 'ape', 'wavpack', 'musepack', 'dsd', 'dsf']);
+
+/**
+ * ¿Puede este equipo decodificar esta canción?
+ *
+ * Por extensión y, cuando hace falta, por códec: un `.m4a` puede traer AAC (que
+ * suena) o ALAC (que no), y por fuera son idénticos.
+ */
+export function esReproducible({ path: ruta = '', codec = '' } = {}) {
+  const punto = String(ruta).lastIndexOf('.');
+  const extension = punto < 0 ? '' : String(ruta).slice(punto).toLowerCase();
+  if (!REPRODUCIBLES.has(extension)) return false;
+  const nombre = String(codec).toLowerCase();
+  return ![...CODECS_MUDOS].some((mudo) => nombre.includes(mudo));
+}
+
+/** Y cómo se llama el formato, para poder decirlo. */
+export function nombreDeFormato({ path: ruta = '', codec = '' } = {}) {
+  if (codec) return String(codec).toUpperCase();
+  const punto = String(ruta).lastIndexOf('.');
+  return punto < 0 ? 'este formato' : String(ruta).slice(punto + 1).toUpperCase();
+}
+
 const MIME = {
   '.mp3': 'audio/mpeg',
   '.m4a': 'audio/mp4',
