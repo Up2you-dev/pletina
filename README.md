@@ -58,7 +58,7 @@ npm run dist:win     # y esto te deja el instalador en release\
 Y para lo demás:
 
 ```bash
-npm run verify       # lint + 332 pruebas + arranque real, arrastre, mezcla, cadena y rejilla
+npm run verify       # lint + 338 pruebas + arranque real, arrastre, mezcla, cadena y rejilla
 npm run dist:mac     # .dmg (arm64 + x64)  · hay que ejecutarlo EN un Mac
 npm run dist:linux   # AppImage + .deb
 ```
@@ -166,6 +166,14 @@ canción o desde la cola. Se queda esperando, colocado por donde la canción
 empieza a sonar de verdad —casi ningún archivo empieza en el segundo cero—, se
 puede preescuchar, mover arrastrando y quitar. La cola sigue estando, pero deja
 de mandar: eso es lo que separa una cabina de una lista de reproducción.
+
+**Una tira de canal por plato.** Volumen, tres bandas de ecualizador con kill al
+doble clic y un mando de filtro bipolar —a la izquierda cierra por arriba, a la
+derecha abre por abajo—. Son nodos aparte de los que automatiza una transición,
+en serie con ellos, así que ni una rampa programada borra lo que acabas de mover
+ni un giro de perilla rompe una mezcla en curso; y la tira viaja con la canción
+cuando pasa a ser la que suena, como en una mesa. Una transición lanzada se puede
+cortar a mitad.
 
 **Y si el análisis no acierta, se pone a mano.** Cuatro golpecitos al ritmo de
 la canción —botón «Marcar tempo» o la tecla `T`— y ya tiene tempo; «El uno está
@@ -343,7 +351,7 @@ y los empaqueta en `.ico` y `.icns`).
 
 ## Pruebas
 
-- `npm test` — 332 pruebas sobre la lógica pura (cola, orden y búsqueda,
+- `npm test` — 338 pruebas sobre la lógica pura (cola, orden y búsqueda,
   formato, `Range`), sobre el almacén y la biblioteca contra archivos de verdad
   en carpetas temporales —análisis incremental, ausencias, discos desconectados,
   correcciones de etiquetas, listas y M3U de ida y vuelta— y de contrato entre
@@ -391,6 +399,13 @@ En Linux sin escritorio, las cinco últimas usan `xvfb-run` automáticamente.
 ## Límites conocidos
 
 - Sin firma ni notarización (arriba).
+- **Hay formatos que se leen pero no suenan.** Este programa importa las
+  etiquetas y la carátula de casi cualquier cosa, pero el audio lo decodifica
+  Chromium, y Chromium no trae AIFF, WMA, ALAC (el M4A sin pérdida de Apple),
+  APE, WavPack, Musepack ni CAF. Esas canciones entran en la biblioteca con sus
+  datos y se dicen a sí mismas que no se pueden reproducir ni analizar; no se
+  ofrecen para analizar ni cuentan como pendientes. Lo que sí suena: MP3, M4A y
+  AAC, FLAC, OGG Vorbis, Opus y WAV.
 - Escribir etiquetas solo funciona en MP3 y WAV. En FLAC, M4A y compañía la
   corrección se queda en Pletina, y la aplicación lo dice al intentarlo.
 - El mezclador no iguala tempos que estén a más de un 12 % de distancia: por

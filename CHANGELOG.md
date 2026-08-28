@@ -4,6 +4,78 @@ Las versiones siguen [SemVer](https://semver.org/lang/es/). Cada una se
 construye desde la pestaña *Actions* del repositorio; una etiqueta `v1.2.3`
 además publica los instaladores sueltos en la página de versiones.
 
+## 5.0.0 — 2026-08-28
+
+Una auditoría contra rekordbox, Serato, Traktor, VirtualDJ y Mixxx, con diez
+frentes en paralelo sobre el código y la aplicación en marcha. Encontró por qué
+no aparecían las rejillas, y no era el dibujo.
+
+### Por qué no se veían las rejillas
+
+- **La rejilla no tenía colores propios.** En tema oscuro la línea de frase —la
+  gruesa, la que manda— estaba puesta en `--signal`, que es **exactamente el
+  mismo hexadecimal** que `--onda-medio`: contraste 1,00:1 contra la banda de
+  medios. Las demás líneas se movían entre 1,06:1 y 1,23:1 sobre la onda. Lo
+  único donde se leía era sobre el fondo, y los ficheros de prueba sintéticos
+  son casi todo fondo: por eso cada medición decía que la rejilla se dibujaba
+  mientras tú, con música masterizada que llena la onda, no veías nada. Ahora
+  tiene sus propios colores en los dos temas y cada línea lleva un **halo** del
+  color del fondo debajo, así que la línea se lee contra el halo y el halo
+  contra la onda: medido a media altura sobre onda densa, **de 5,3:1 a 9,2:1**.
+- **La prueba que lo vigilaba miraba donde no había onda.** Contaba píxeles en
+  la franja de arriba, justo donde la rejilla ya era legible, y callaba sobre el
+  84 % central. Ahora mide el salto de luminancia de cada línea contra sus
+  columnas vecinas, a tres alturas y en los dos temas.
+- **La jerarquía dependía de una medida que casi nunca sale.** En música
+  masterizada `fuerzaFrase` da 0, así que no se dibujaba ni una línea fuerte y
+  los compases se numeraban desde el principio de la canción: números de tres
+  cifras en el minuto cuatro. Los compases van de cuatro en cuatro porque así es
+  la música; lo que aporta el análisis es cuál abre la frase.
+- **La vista general no tenía rejilla ninguna**, y es la primera que se mira.
+  Ahora lleva las frases y la marca de por dónde empieza a sonar.
+- **La deriva borraba rejillas en vez de avisar.** Confianza y firmeza se
+  multiplicaban, así que todo lo que respira —un directo, música de club con
+  sidechain— se quedaba sin rejilla, y encima la cabina lo llamaba «sin pulso
+  claro», que es falso. Ahora son dos números, la firmeza es relativa al tempo
+  (medio punto a 70 bpm es el doble de desviación que a 140) y pone un suelo.
+
+### Formatos que nunca iban a funcionar
+
+- **AIFF, WMA, ALAC, APE, WavPack, Musepack y CAF no se pueden decodificar** en
+  este Electron —preguntado con `canPlayType`, contestan «no»— y se importaban
+  igual. Una biblioteca de pinchadiscos llena de AIFF o de Apple Lossless
+  entraba, enseñaba sus etiquetas, salía en la cabina como «sin analizar · pulsa
+  Analizar» y por mucho que se pulsara no pasaba nada: el contador de pendientes
+  no bajaba nunca y en ningún sitio se nombraba la causa.
+- **Y analizar una de esas decía que había ido bien.** El mensaje se apoyaba en
+  el bpm de la ETIQUETA —que en un archivo escrito por rekordbox o Mixed In Key
+  ya viene puesto—, así que contestaba «128 pulsaciones · Am» de un archivo cuyo
+  audio acababa de reventar. Ahora los fallos van primero y dicen el formato.
+
+### El motor de audio
+
+- **El mando pasaba al otro plato al programar la mezcla, no al pinchazo.** Entre
+  pulsar «Mezclar ahora» y el pinchazo pueden pasar siete segundos, y en esa
+  ventana el Espacio no pausaba: se llevaba por delante la canción que sonaba.
+- **El cambio de graves era un escalón de 26 dB en una muestra** —un chasquido en
+  el uno del compás central— porque las rampas se anclaban en el valor de ahora
+  y no en el que tendrán cuando les toque. Y al terminar la transición había un
+  hueco de 50 ms.
+- Arrastrar una onda mientras la cabina se repintaba multiplicaba el empujón por
+  setecientos. El encadenado simple podía cerrar la mezcla de otro. La
+  preescucha se quedaba sonando encima de la canción nueva. Y había una fuga de
+  oyentes por mezcla.
+
+### La cabina, más cerca de una mesa
+
+- **Tira de canal por plato**: volumen, tres bandas con kill al doble clic y un
+  mando de filtro bipolar. Son nodos aparte de los que automatiza una
+  transición, así que ni una rampa te borra lo que acabas de mover ni un giro de
+  perilla rompe la mezcla en curso. Y viaja con la canción cuando pasa a sonar.
+- **Una transición se puede cortar** a mitad. Hasta ahora eran quince segundos
+  de guion escrito y la única salida era pausar, que corta la música.
+- **«Mezclar ahora» dice cuánto falta** antes de pulsarlo.
+
 ## 4.3.0 — 2026-08-28
 
 ### El «uno» caía donde le parecía
