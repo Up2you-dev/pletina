@@ -658,6 +658,14 @@ const actions = {
     toast('Lista reordenada. Puedes seguir ajustándola arrastrando.');
   },
 
+  /**
+   * La tira de canal de un plato. No repinta la cabina: se está arrastrando un
+   * mando y el mando tiene que quedarse quieto debajo del dedo.
+   */
+  tira(cual, mando, valor) {
+    player.ajustarTira(cual, { [mando]: valor });
+  },
+
   /** Todo lo que se pulsa en la pantalla del mezclador pasa por aquí. */
   mezclador(que, valor) {
     switch (que) {
@@ -706,6 +714,14 @@ const actions = {
             renderStage();
           }
         });
+        return;
+      }
+      case 'cortar': {
+        if (!player.cortarMezcla()) return;
+        toast('Mezcla cortada · se queda la que estaba entrando.');
+        refreshRows();
+        renderQueue();
+        renderStage();
         return;
       }
       case 'marcar-tempo': {

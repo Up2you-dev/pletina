@@ -499,6 +499,68 @@ comprobar('y la rejilla queda puesta a mano', (await evaluar(`(async () => {
   return m.platoB()?.ficha?.rejilla?.aMano === true;
 })()`)) === true);
 
+/* ------------------------------------------------------- la tira de canal */
+
+console.log('la tira de canal:');
+const medirTira = () => evaluar(`(async () => {
+  const p = await import('./player.js');
+  const platos = p.estadoDePlatos();
+  const motor = p.engine();
+  return { tira: p.estadoTira('a'), platos: platos.length, hayMotor: Boolean(motor) };
+})()`);
+
+const antesDeTocar = await medirTira();
+comprobar('el plato que suena tiene su tira', antesDeTocar.hayMotor === true,
+  JSON.stringify(antesDeTocar.tira));
+
+// Se mueven los mandos como se mueven: arrastrando, que emite `input`.
+const mover = async (mando, valor) => {
+  await evaluar(`(() => {
+    const m = document.querySelector('[data-tira="a"][data-mando="${mando}"]');
+    if (!m) return false;
+    m.value = '${valor}';
+    m.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+  await sleep(250);
+};
+
+await mover('grave', -26);
+await mover('filtro', 0.6);
+await mover('volumen', 0.5);
+const tocada = (await medirTira()).tira;
+comprobar('los mandos llegan al motor de audio',
+  tocada.grave === -26 && Math.abs(tocada.filtro - 0.6) < 0.01 && Math.abs(tocada.volumen - 0.5) < 0.01,
+  JSON.stringify(tocada));
+
+// Y el grafo lo ha aplicado de verdad, no solo la contabilidad.
+const enElGrafo = await evaluar(`(async () => {
+  const p = await import('./player.js');
+  const nodos = p.nodosDePlato?.('a');
+  if (!nodos) return null;
+  return {
+    grave: Math.round(nodos.mGrave.gain.value * 10) / 10,
+    filtro: nodos.filtro.type,
+    corte: Math.round(nodos.filtro.frequency.value),
+    trim: Math.round(nodos.trim.gain.value * 100) / 100,
+  };
+})()`);
+comprobar('y el grafo de audio los aplica', enElGrafo
+  && enElGrafo.grave < -20 && enElGrafo.filtro === 'highpass' && enElGrafo.trim < 0.6,
+  JSON.stringify(enElGrafo));
+
+// Doble clic devuelve la banda a su sitio.
+await evaluar(`(() => {
+  const m = document.querySelector('[data-tira="a"][data-mando="grave"]');
+  m.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, detail: 2 }));
+  return true;
+})()`);
+await sleep(300);
+comprobar('doble clic devuelve la banda', (await medirTira()).tira.grave === 0,
+  JSON.stringify((await medirTira()).tira.grave));
+await mover('filtro', 0);
+await mover('volumen', 1);
+
 /* -------------------------------------------------------- los interruptores */
 
 // Las tres casillas de la cabina: igualar el tempo, mantener el tono y

@@ -388,6 +388,13 @@ select.sort:hover{border-color:var(--muted-2)}
 .deck-reloj{font-family:var(--ff-mono); font-size:13px; color:var(--muted); flex:none; min-width:44px; text-align:right}
 .deck-reloj.apurado{color:var(--signal)}
 .deck-botones{display:flex; gap:8px; flex-wrap:wrap}
+/* La tira de canal: cinco mandos en línea, como en una mesa. */
+.tira{display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:10px; padding:2px 0}
+.tira .mando{display:flex; flex-direction:column; gap:2px; min-width:0}
+.tira .mando span{font-family:var(--ff-display); font-size:9px; font-weight:600; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--muted-2)}
+.tira .mando input{width:100%; accent-color:var(--accent); cursor:pointer}
+.tira .mando input:disabled{opacity:.35; cursor:default}
 
 .onda{display:block; width:100%; border-radius:var(--r-sm); background:var(--onda-fondo); cursor:pointer}
 .onda.general{height:34px}

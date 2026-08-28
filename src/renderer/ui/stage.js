@@ -547,6 +547,25 @@ export function bindStage(handlers) {
     }
   });
 
+  // Los mandos de la tira de canal se atienden en `input`, que llega mientras se
+  // arrastra: un ecualizador que solo responde al soltar no sirve para pinchar.
+  body.addEventListener('input', (event) => {
+    const mando = event.target.closest('[data-tira][data-mando]');
+    if (mando) actions.tira(mando.dataset.tira, mando.dataset.mando, Number(mando.value));
+  });
+
+  // Doble clic: la banda se mata y se devuelve, como en cualquier mesa.
+  body.addEventListener('dblclick', (event) => {
+    const mando = event.target.closest('[data-tira][data-mando]');
+    if (!mando) return;
+    const clave = mando.dataset.mando;
+    const neutro = clave === 'volumen' ? 1 : 0;
+    const matado = clave === 'volumen' ? 0 : -26;
+    const valor = Number(mando.value) === neutro ? matado : neutro;
+    mando.value = String(clave === 'filtro' ? 0 : valor);
+    actions.tira(mando.dataset.tira, clave, Number(mando.value));
+  });
+
   body.addEventListener('dblclick', (event) => {
     const row = event.target.closest('.row');
     if (row && !event.target.closest('button')) actions.play(row.dataset.id);

@@ -38,6 +38,9 @@ const otro = () => platos[1 - activo];
 
 let encadenando = false;
 let avisadoFinal = false;
+/** La tira de canal, tal como la ha dejado la persona, por plato. */
+const NEUTRA = { grave: 0, medio: 0, agudo: 0, filtro: 0, volumen: 1 };
+const tiras = { a: { ...NEUTRA }, b: { ...NEUTRA } };
 /** Cuánto suena el plato preparado cuando se preescucha. */
 const PREESCUCHA = 0.55;
 /**
@@ -147,6 +150,30 @@ export function prepararPlato(id, { en = 0, escuchar = false } = {}) {
   }
   hooks.onPreparado?.(estadoPreparado());
   return true;
+}
+
+/**
+ * La tira de canal de un plato: ecualizador de mano, filtro y volumen.
+ *
+ * `cual` es 'a' para el que suena y 'b' para el preparado, igual que en la
+ * cabina; durante una transición, 'a' sigue siendo el que se ve arriba.
+ */
+export function ajustarTira(cual, valores) {
+  if (!motor) return null;
+  const objetivo = cual === 'b' ? (preparado() ?? otro()) : plato();
+  if (!objetivo?.nodos) return null;
+  motor.ajustarTira(objetivo.nodos, valores);
+  tiras[cual] = { ...tiras[cual], ...valores };
+  return tiras[cual];
+}
+
+/** Cómo está la tira de cada plato, para que la pantalla lo enseñe. */
+export const estadoTira = (cual) => ({ ...NEUTRA, ...tiras[cual] });
+
+/** Los nodos de un plato. Solo para poder comprobar el grafo desde una prueba. */
+export function nodosDePlato(cual) {
+  const objetivo = cual === 'b' ? (preparado() ?? otro()) : plato();
+  return objetivo?.nodos ?? null;
 }
 
 /** El plato con algo preparado, si lo hay. */
@@ -423,6 +450,20 @@ export function warmNext(id) {
  * devolverlos, la canción sigue sonando sin graves para siempre y no hay manera
  * de saber por qué.
  */
+/**
+ * Cortar una transición en marcha, dejando sonando lo que corresponda.
+ *
+ * Hasta ahora, una vez lanzada la mezcla no se podía tocar: quince segundos de
+ * guion escrito y la única salida era pausar, que corta la música. Una cabina es
+ * justo lo contrario —la transición la conduces tú y puedes cambiar de opinión a
+ * mitad—, así que esto es lo mínimo: soltarla y quedarse con una de las dos.
+ */
+export function cortarMezcla() {
+  if (!encadenando) return false;
+  cancelarFundido();
+  return true;
+}
+
 function cancelarFundido() {
   if (!encadenando) return;
   encadenando = false;
@@ -566,6 +607,13 @@ export function mezclar(id, plan, { estirarTiempo = true } = {}) {
    */
   const darElMando = () => {
     if (!esMia()) return;
+    // La tira de canal viaja con la canción, que es lo que pasa en una mesa: lo
+    // que has filtrado o ecualizado en el plato que preparabas sigue puesto
+    // cuando esa canción pasa a ser la que suena. Los nodos ya viajan solos
+    // —son los del mismo plato físico—; esto es la contabilidad.
+    tiras.a = { ...tiras.b };
+    tiras.b = { ...NEUTRA };
+    if (motor) motor.ajustarTira(saliente.nodos, NEUTRA);
     activo = 1 - activo;
     state.currentId = id;
     avisadoFinal = false;

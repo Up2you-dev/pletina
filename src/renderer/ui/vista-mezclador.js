@@ -6,7 +6,7 @@ import { desfaseEntre } from '../../shared/onda-vista.js';
 import {
   candidatos, estadoDeMezcla, fichaDeMezcla, pendientesDeAnalizar, prepararPlan,
 } from '../mezclador.js';
-import { estadoDePlatos, estadoPreparado, platoActivo } from '../player.js';
+import { estadoDePlatos, estadoPreparado, estadoTira, platoActivo } from '../player.js';
 import { ondaCargada, pedirOnda } from '../ondas.js';
 import { state } from '../state.js';
 import { pintarGeneral, pintarZoom, segundoEnLaGeneral } from './onda.js';
@@ -117,6 +117,32 @@ function encajeHtml(c) {
     esc(c.ajuste < 0.001 ? 'mismo tempo' : formatPorcentaje(estiron))}</i>`;
 }
 
+/**
+ * La tira de canal de un plato: lo que en una mesa son cuatro mandos.
+ *
+ * Es la carencia que más se nota al abrir la cabina viniendo de rekordbox,
+ * Serato o Traktor: en todos ellos el centro de la pantalla es esto. El motor ya
+ * sabía hacerlo —lo hace solo durante quince segundos en cada transición—; lo
+ * que faltaban eran los mandos. Doble clic en una banda la mata y la devuelve.
+ */
+function tiraHtml(cual, hay) {
+  const t = estadoTira(cual);
+  const mando = (clave, etiqueta, titulo, min, max, paso, valor) => `
+    <label class="mando" title="${esc(titulo)}">
+      <span>${esc(etiqueta)}</span>
+      <input type="range" data-tira="${cual}" data-mando="${clave}"
+        min="${min}" max="${max}" step="${paso}" value="${valor}"${hay ? '' : ' disabled'}
+        aria-label="${esc(titulo)}">
+    </label>`;
+  return `<div class="tira" data-tira-de="${cual}">
+    ${mando('grave', 'GRA', 'Graves de este plato · doble clic para quitarlos del todo', -26, 6, 0.5, t.grave)}
+    ${mando('medio', 'MED', 'Medios de este plato · doble clic para quitarlos del todo', -26, 6, 0.5, t.medio)}
+    ${mando('agudo', 'AGU', 'Agudos de este plato · doble clic para quitarlos del todo', -26, 6, 0.5, t.agudo)}
+    ${mando('filtro', 'FILTRO', 'A la izquierda cierra por arriba, a la derecha abre por abajo · doble clic para centrarlo', -1, 1, 0.01, t.filtro)}
+    ${mando('volumen', 'VOL', 'Volumen de este plato, sin tocar el general', 0, 1.4, 0.01, t.volumen)}
+  </div>`;
+}
+
 function candidatoHtml(c) {
   return `<button class="candidato${c.cuadra ? '' : ' floja'}" data-cargar="${esc(c.id)}"
     draggable="true" data-id="${esc(c.id)}" title="Cargar en el plato B">
@@ -170,6 +196,7 @@ export function pintarMezclador() {
       ${cabeceraDeck(saliente, 'A · suena')}
       <canvas class="onda general" data-onda="general-a"></canvas>
       <canvas class="onda zoom" data-onda="zoom-a"></canvas>
+      ${tiraHtml('a', Boolean(saliente))}
     </section>
 
     <div class="entre-platos">
@@ -184,9 +211,12 @@ export function pintarMezclador() {
       <canvas class="onda zoom" data-onda="zoom-b"></canvas>
       <canvas class="onda general" data-onda="general-b"></canvas>
       ${cabeceraDeck(entrante, 'B · preparas')}
+      ${tiraHtml('b', Boolean(platoB))}
       <div class="deck-botones">
         <button class="btn pequeno${platoB?.escuchando ? ' on' : ''}" data-mezcla="preescuchar"
-          ${platoB ? '' : 'disabled'}>${ICO.vol}Preescuchar</button>
+          ${platoB ? '' : 'disabled'} aria-pressed="${Boolean(platoB?.escuchando)}"
+          title="Escuchar el plato preparado sin lanzar la mezcla · tecla B">
+          ${ICO.vol}${platoB?.escuchando ? 'Preescuchando' : 'Preescuchar'}</button>
         <button class="btn pequeno" data-mezcla="compas-atras"${platoB ? '' : ' disabled'}
           title="Un compás atrás">${ICO.prev}Compás</button>
         <button class="btn pequeno" data-mezcla="compas-adelante"${platoB ? '' : ' disabled'}
@@ -219,10 +249,15 @@ export function pintarMezclador() {
         <p id="mezcla-estado">Mezclando · ${esc(enCurso.resumen)}</p>
       </div>` : ''}
 
-      <button class="btn btn-primary grande" data-mezcla="ahora"${disponible.puede ? '' : ' disabled'}>
-        ${ICO.play}Mezclar ahora
+      ${enCurso ? `<button class="btn btn-primary grande" data-mezcla="cortar">
+        ${ICO.x}Cortar la mezcla
       </button>
-      ${disponible.puede ? '' : `<p class="hint">${esc(disponible.motivo)}</p>`}
+      <p class="hint">Se queda sonando la que estaba entrando.</p>`
+    : `<button class="btn btn-primary grande" data-mezcla="ahora"${disponible.puede ? '' : ' disabled'}
+        title="Espera al compás y pincha · tecla M">
+        ${ICO.play}Mezclar ahora${preparado?.espera > 0.3 ? ` · entra en ${conComa(preparado.espera)} s` : ''}
+      </button>
+      ${disponible.puede ? '' : `<p class="hint">${esc(disponible.motivo)}</p>`}`}
 
       <div class="grupo">
         <span class="etiqueta">Cuántos compases dura</span>

@@ -95,18 +95,92 @@ export function createEngine() {
 
     const ganancia = contexto.createGain();
 
+    // Y la tira de canal, que es de la persona y no de la mezcla.
+    //
+    // Van aparte a propósito. Los tres filtros de arriba y `ganancia` son los
+    // que automatiza una transición; si el ecualizador de mano escribiera en
+    // esos mismos, cada rampa programada borraría lo que acabas de mover y cada
+    // giro de perilla rompería la mezcla en curso. Con dos juegos en serie,
+    // cada uno manda en lo suyo y ninguno pisa al otro.
+    const mGrave = contexto.createBiquadFilter();
+    mGrave.type = 'lowshelf';
+    mGrave.frequency.value = 220;
+
+    const mMedio = contexto.createBiquadFilter();
+    mMedio.type = 'peaking';
+    mMedio.frequency.value = 1000;
+    mMedio.Q.value = 0.9;
+
+    const mAgudo = contexto.createBiquadFilter();
+    mAgudo.type = 'highshelf';
+    mAgudo.frequency.value = 4000;
+
+    // Un solo mando bipolar, como en cualquier mesa: a la izquierda cierra por
+    // arriba, a la derecha abre por abajo, en el centro no hace nada.
+    const filtro = contexto.createBiquadFilter();
+    filtro.type = 'lowpass';
+    filtro.frequency.value = 22050;
+    filtro.Q.value = 0.7;
+
+    const trim = contexto.createGain();
+
     fuente.connect(grave);
     grave.connect(medio);
     medio.connect(agudo);
-    agudo.connect(ganancia);
+    agudo.connect(mGrave);
+    mGrave.connect(mMedio);
+    mMedio.connect(mAgudo);
+    mAgudo.connect(filtro);
+    filtro.connect(trim);
+    trim.connect(ganancia);
     ganancia.connect(entradaEq);
 
-    const plato = { fuente, ganancia, grave, medio, agudo };
+    const plato = {
+      fuente, ganancia, grave, medio, agudo, mGrave, mMedio, mAgudo, filtro, trim,
+    };
     fuentes.set(elemento, plato);
     return plato;
   }
 
-  /** Deja un plato como si nadie lo hubiera tocado. */
+  /**
+   * La tira de canal de un plato: ecualizador de mano, filtro y volumen.
+   *
+   * Los decibelios se aplican tal cual —el nodo los toma en dB— y el filtro se
+   * mueve en escala logarítmica, que es como se oye: de 20 kHz a 200 Hz cerrando
+   * y de 20 Hz a 8 kHz abriendo.
+   */
+  function ajustarTira(plato, { grave, medio, agudo, filtro, volumen } = {}) {
+    if (!plato) return;
+    const ahora = contexto.currentTime;
+    const suave = (parametro, valor) => {
+      parametro.cancelScheduledValues(ahora);
+      parametro.setTargetAtTime(valor, ahora, 0.01);
+    };
+    if (Number.isFinite(grave)) suave(plato.mGrave.gain, grave);
+    if (Number.isFinite(medio)) suave(plato.mMedio.gain, medio);
+    if (Number.isFinite(agudo)) suave(plato.mAgudo.gain, agudo);
+    if (Number.isFinite(volumen)) suave(plato.trim.gain, Math.max(0, Math.min(1.4, volumen)));
+    if (Number.isFinite(filtro)) {
+      const v = Math.max(-1, Math.min(1, filtro));
+      if (Math.abs(v) < 0.02) {
+        plato.filtro.type = 'lowpass';
+        suave(plato.filtro.frequency, 22050);
+      } else if (v < 0) {
+        plato.filtro.type = 'lowpass';
+        suave(plato.filtro.frequency, 20000 * (200 / 20000) ** -v);
+      } else {
+        plato.filtro.type = 'highpass';
+        suave(plato.filtro.frequency, 20 * (8000 / 20) ** v);
+      }
+    }
+  }
+
+  /**
+   * Deja un plato como si nadie lo hubiera tocado.
+   *
+   * Solo lo de la mezcla: el ecualizador de mano, el filtro y el volumen del
+   * canal son de la persona, y una transición no tiene por qué llevárselos.
+   */
   function limpiarPlato(plato, cuando = contexto.currentTime) {
     if (!plato) return;
     for (const nombre of ['grave', 'medio', 'agudo']) {
@@ -134,6 +208,7 @@ export function createEngine() {
     analizador,
     conectar,
     limpiarPlato,
+    ajustarTira,
     despertar,
     get tiempo() {
       return contexto.currentTime;
