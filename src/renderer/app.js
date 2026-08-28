@@ -32,7 +32,7 @@ import { bindStage, refreshRows, renderStage, renderStageHead, scrollToCurrent }
 import { bindQueue, renderQueue } from './ui/queue.js';
 import { abrirSonido, bindSonido, cerrarSonido } from './ui/sonido.js';
 import { alternarVisualizador, montarVisualizador } from './ui/visualizador.js';
-import { analizada } from '../shared/beats.js';
+import { analizada, rejillaVigente } from '../shared/beats.js';
 import { analizarPista } from './analisis.js';
 import { analizandoLote, analizarLote, cancelarLote } from './analisis-lote.js';
 import { olvidarOnda } from './ondas.js';
@@ -454,7 +454,15 @@ const actions = {
     } else if (resumen.hechas) {
       const saltadas = resumen.saltadas ? ` · ${resumen.saltadas} ya lo estaban` : '';
       const fallidas = resumen.fallidas ? ` · ${resumen.fallidas} con error` : '';
-      toast(`${plural(resumen.hechas, 'canción analizada', 'canciones analizadas')}${saltadas}${fallidas}`);
+      // Cuántas se han quedado sin rejilla: tienen tempo, pero su pulso no da
+      // para pinchar en el compás. Callárselo dejaba al usuario mirando una
+      // cabina sin rejilla y sin saber por qué.
+      const sinRejilla = ids.filter((id) => {
+        const track = getTrack(id);
+        return track?.bpm && !rejillaVigente(track.rejilla);
+      }).length;
+      const sin = sinRejilla ? ` · ${sinRejilla} con tempo pero sin rejilla` : '';
+      toast(`${plural(resumen.hechas, 'canción analizada', 'canciones analizadas')}${saltadas}${fallidas}${sin}`);
     } else {
       toast('No he podido analizar el audio.');
     }

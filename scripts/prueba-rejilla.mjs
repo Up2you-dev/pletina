@@ -296,6 +296,31 @@ const colores = await evaluar(`(() => {
 })()`);
 comprobar('con las tres bandas de distinto color', colores >= 3, `${colores} colores`);
 
+// La rejilla tiene que VERSE encima de la onda. Se dibuja en la franja de
+// arriba, donde la onda no llega nunca: si ahí no hay tinta, no hay rejilla que
+// mirar por mucho que el análisis la haya calculado.
+const rejillaVista = await evaluar(`(async () => {
+  const m = await import('./mezclador.js');
+  const st = await import('./state.js');
+  const ov = await import('../shared/onda-vista.js');
+  const p = await import('./player.js');
+  const ficha = m.fichaDeMezcla(st.state.currentId);
+  const { desde, hasta } = ov.ventana(p.currentTime(), 8);
+  const lineas = ov.lineasDeRejilla(ficha?.rejilla ?? null, { desde, hasta });
+  const c = document.querySelector('[data-onda="zoom-a"]');
+  const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  let columnas = 0;
+  for (let x = 0; x < c.width; x += 1) {
+    const i = (2 * c.width + x) * 4;
+    if (d[i + 3] > 20) columnas += 1;
+  }
+  return { lineas: lineas.length, unos: lineas.filter(l => l.tipo !== 'golpe').length, columnas };
+})()`);
+comprobar('el análisis deja rejilla que dibujar', rejillaVista.lineas > 4,
+  `${rejillaVista.lineas} líneas, ${rejillaVista.unos} compases`);
+comprobar('y se ve encima de la onda', rejillaVista.columnas >= rejillaVista.unos,
+  `${rejillaVista.columnas} columnas con tinta arriba`);
+
 // Y el ×2 de la cabina, pulsándolo como se pulsa: el botón tiene que estar
 // vivo, la orden llegar y el número cambiar en la ficha del plato.
 const bpmDeB = () => evaluar(`(async () => (await import('./mezclador.js')).platoB()?.ficha?.bpm ?? 0)()`);

@@ -106,6 +106,25 @@ describe('lineasDeRejilla', () => {
     expect(unos).toEqual([1.25, 3.25]);
   });
 
+  it('numera los compases dentro de la frase, que es como se cuentan', () => {
+    const lineas = lineasDeRejilla(rejilla, { desde: 0, hasta: 17 });
+    const unos = lineas.filter((l) => l.tipo !== 'golpe');
+    // A 120, un compás son dos segundos y una frase ocho: uno, dos, tres,
+    // cuatro y vuelta a empezar.
+    expect(unos.map((l) => l.compas)).toEqual([1, 2, 3, 4, 1, 2, 3, 4, 1]);
+    expect(unos.filter((l) => l.compas === 1).every((l) => l.tipo === 'frase')).toBe(true);
+  });
+
+  it('sin frase, el número es el compás desde el principio', () => {
+    const lineas = lineasDeRejilla({ ...rejilla, fuerzaFrase: 0 }, { desde: 0, hasta: 9 });
+    expect(lineas.filter((l) => l.tipo !== 'golpe').map((l) => l.compas)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('un golpe suelto no lleva número: no es un compás', () => {
+    const lineas = lineasDeRejilla(rejilla, { desde: 0, hasta: 2 });
+    expect(lineas.filter((l) => l.tipo === 'golpe').every((l) => l.compas === null)).toBe(true);
+  });
+
   it('con un tramo enorme no devuelve diez mil líneas', () => {
     expect(lineasDeRejilla(rejilla, { desde: 0, hasta: 600 })).toEqual([]);
   });

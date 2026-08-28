@@ -20,6 +20,26 @@ La cabina deja de ser una lista cerrada de la que no se conoce el criterio.
   *(La prueba de la cadena automática no lo cazó porque enciende el ajuste desde
   el módulo, no desde la casilla: probaba el motor, no el interruptor.)*
 
+### El análisis se veía menos de lo que sabía
+
+- **El tempo ya no se pierde.** Si una canción salía con un pulso demasiado
+  flojo para fiarse de su rejilla, la versión anterior se quedaba también sin el
+  número: ni bpm, ni orden por tempo, ni pista de por qué. Eran dos cosas
+  distintas metidas en una. Ahora el tempo se da siempre —es lo que se ha
+  medido— y lo que falta, cuando falta, es la rejilla.
+- **Y se dice cuál es cuál.** Al analizar en lote, el aviso cuenta cuántas se
+  han quedado «con tempo pero sin rejilla». En la cabina, esa canción dice «sin
+  pulso claro · no hay rejilla que cuadrar» en vez de ofrecer otra vez el botón
+  de analizar, que la volvía a analizar para dar el mismo resultado.
+- **La rejilla se ve.** Se pintaba con un 15 % de opacidad efectiva sobre una
+  onda densa, o sea que no se pintaba: estaba calculada y no llegaba al ojo. Los
+  unos de compás ahora cruzan la onda entera con fuerza, los golpes sueltos
+  asoman arriba y abajo sin taparla, **y cada compás lleva su número** —del uno
+  al cuatro dentro de la frase, que es como se cuenta en una cabina, o el compás
+  desde el principio si la canción no tiene frases claras—. Hay una prueba que
+  mira los píxeles de la franja de arriba, donde la onda no llega nunca: si ahí
+  no hay tinta, no hay rejilla.
+
 ### Elegir qué pinchar
 
 - **Arrastrar una canción al plato B.** Desde la lista de la biblioteca o desde

@@ -89,7 +89,11 @@ export async function analizarPista(id, contexto) {
   // que agarrar —una charla, un ambiente, una grabación de campo—, y una
   // rejilla inventada es peor que ninguna: cuadra el pinchazo con la nada.
   const rejilla = tanteo && tanteo.fuerza >= FUERZA_MINIMA ? tanteo : null;
-  const bpm = rejilla?.bpm || 0;
+  // Pero el tempo se da igual. Que una rejilla no sirva para pinchar no
+  // significa que no se sepa a qué velocidad va la canción, y quedarse sin el
+  // número —que es lo que pasaba— deja al usuario sin nada donde antes tenía
+  // algo: sin dato, sin orden por tempo y sin saber por qué.
+  const bpm = rejilla?.bpm || tanteo?.bpm || bpmAprox || 0;
 
   return {
     version: ANALISIS_VERSION,

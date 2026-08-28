@@ -174,19 +174,49 @@ export function pintarZoom(canvas, ondas, {
     ctx.globalAlpha = 1;
   }
 
-  // Rejilla: la frase se ve, el compás se nota y el golpe solo acompaña.
-  for (const linea of lineasDeRejilla(rejilla, { desde, hasta })) {
+  // Rejilla: la frase manda, el compás se ve y el golpe acompaña.
+  //
+  // Se dibuja por encima de la onda y no por debajo, y con fuerza: una rejilla
+  // que no se ve no sirve de nada, y la de antes —un 15 % de opacidad efectiva
+  // sobre una onda densa— no se veía. Es lo que se mira para saber si dos
+  // canciones van cuadradas.
+  const lineas = lineasDeRejilla(rejilla, { desde, hasta });
+  for (const linea of lineas) {
     const x = Math.round(xDeSegundo(linea.segundo, vista)) + 0.5;
+    const esUno = linea.tipo !== 'golpe';
     ctx.strokeStyle = linea.tipo === 'frase' ? paleta.senal : paleta.rejilla;
-    ctx.globalAlpha = linea.tipo === 'frase' ? 0.9 : linea.tipo === 'compas' ? 0.55 : 0.2;
+    ctx.globalAlpha = linea.tipo === 'frase' ? 1 : linea.tipo === 'compas' ? 0.85 : 0.4;
     ctx.lineWidth = linea.tipo === 'frase' ? 2 : 1;
     ctx.beginPath();
-    // El golpe suelto solo asoma por abajo; el uno cruza la onda entera.
-    ctx.moveTo(x, linea.tipo === 'golpe' ? alto * 0.78 : 0);
-    ctx.lineTo(x, alto);
+    // El golpe suelto asoma por arriba y por abajo, sin cruzar la onda; el uno
+    // la cruza entera, que es el que hay que ver de un vistazo.
+    if (esUno) {
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, alto);
+    } else {
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, alto * 0.16);
+      ctx.moveTo(x, alto * 0.84);
+      ctx.lineTo(x, alto);
+    }
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
+  // Y el número del compás encima de su línea: «señalar los compases» es esto,
+  // poder contarlos sin llevar la cuenta con el dedo.
+  if (alto > 44) {
+    ctx.font = '9px ui-monospace, monospace';
+    ctx.textBaseline = 'top';
+    for (const linea of lineas) {
+      if (linea.tipo === 'golpe' || linea.compas == null) continue;
+      const x = Math.round(xDeSegundo(linea.segundo, vista)) + 3;
+      ctx.fillStyle = linea.tipo === 'frase' ? paleta.senal : paleta.agudo;
+      ctx.globalAlpha = linea.tipo === 'frase' ? 1 : 0.55;
+      ctx.fillText(String(linea.compas), x, 2);
+    }
+    ctx.globalAlpha = 1;
+    ctx.textBaseline = 'alphabetic';
+  }
 
   for (const marca of marcas) {
     const x = xDeSegundo(marca.segundo, vista);

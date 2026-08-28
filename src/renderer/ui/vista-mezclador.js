@@ -57,7 +57,10 @@ const conComa = (numero, decimales = 1) => numero.toFixed(decimales).replace('.'
  * va no es un error del análisis, es una canción tocada a mano; pero hay que
  * decirlo antes, no después.
  */
-function fiabilidad(rejilla) {
+function fiabilidad(rejilla, ficha) {
+  // Analizada y sin pulso: se dice, porque no es lo mismo que estar sin
+  // analizar y el usuario tiene que saber por qué no hay rejilla que mirar.
+  if (ficha?.sinPulso) return 'sin pulso claro · no hay rejilla que cuadrar';
   if (!rejilla?.bpm) return '';
   if (rejilla.aMano) return 'rejilla puesta a mano';
   if ((rejilla.deriva ?? 0) > 0.5) return 'el tempo se mueve · cuadra a ojo';
@@ -70,7 +73,7 @@ function datosDe(ficha, extra = []) {
     ficha.bpm ? `${conComa(ficha.bpm)} bpm` : 'sin tempo',
     ficha.tonalidad || ficha.key || 'sin tonalidad',
     ficha.rejilla?.porBombo ? 'rejilla por bombo' : '',
-    fiabilidad(ficha.rejilla),
+    fiabilidad(ficha.rejilla, ficha),
     ...extra,
   ].filter(Boolean).map((d) => esc(d)).join(' · ');
 }
@@ -91,7 +94,7 @@ function cabeceraDeck(ficha, papel) {
     </span>
     <span class="deck-datos" data-datos="${esc(papel[0])}">${datosDe(ficha)}</span>
     <span class="deck-reloj" data-reloj="${esc(papel[0])}"></span>
-    ${ficha.analizada ? '' : `<button class="btn btn-ghost pequeno" data-mezcla="analizar" data-id="${esc(ficha.id)}">
+    ${ficha.analizada || ficha.sinPulso ? '' : `<button class="btn btn-ghost pequeno" data-mezcla="analizar" data-id="${esc(ficha.id)}">
       ${ICO.waves}Analizar
     </button>`}
   </header>`;
@@ -306,7 +309,8 @@ function pintarCuadro(raiz) {
     let mensaje = '';
     if (!ficha?.id) mensaje = cual === 'b' ? 'arrastra aquí una canción, o elígela abajo' : 'no suena nada';
     else if (!ondas) {
-      mensaje = ficha.analizada ? 'sin onda guardada · vuelve a analizarla' : 'sin analizar · pulsa «Analizar»';
+      if (ficha.sinPulso) mensaje = 'sin pulso claro · esta canción no tiene rejilla';
+      else mensaje = ficha.analizada ? 'sin onda guardada · vuelve a analizarla' : 'sin analizar · pulsa «Analizar»';
     }
     const estado = enPlato[cual];
     const tiempo = estado?.tiempo ?? (cual === 'a' ? activo.tiempo : preparado.tiempo) ?? 0;

@@ -63,6 +63,11 @@ export function fichaDeMezcla(id) {
     rejilla,
     conFrase: (rejilla?.fuerzaFrase ?? 0) > 0,
     analizada: rejillaVigente(rejilla),
+    // Analizada de verdad, pero sin rejilla que valga: tiene tempo y no tiene
+    // pulso con el que pinchar en el compás. No es lo mismo que estar sin
+    // analizar, y ofrecer «Analizar» aquí manda a repetir un trabajo que ya se
+    // hizo y va a salir igual.
+    sinPulso: analizada(track) && !rejillaVigente(rejilla),
   };
 }
 

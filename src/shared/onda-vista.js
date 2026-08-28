@@ -78,12 +78,18 @@ export function lineasDeRejilla(rejilla, { desde, hasta, maximo = 512 } = {}) {
     const desdeElUno = k - tiempoFuerte;
     const enCompas = ((desdeElUno % tiemposPorCompas) + tiemposPorCompas) % tiemposPorCompas;
     let tipo = 'golpe';
+    let numero = null;
     if (enCompas === 0) {
       const compas = Math.floor(desdeElUno / tiemposPorCompas) - compasFuerte;
       const enFrase = ((compas % compasesPorFrase) + compasesPorFrase) % compasesPorFrase;
       tipo = conFrase && enFrase === 0 ? 'frase' : 'compas';
+      // El número que se enseña es el que uno cuenta: si la canción tiene
+      // frases, del uno al cuatro dentro de la frase, que es como se cuenta en
+      // una cabina. Si no las tiene, el compás desde el principio, que al menos
+      // dice por dónde va.
+      numero = conFrase ? enFrase + 1 : compas + 1;
     }
-    lineas.push({ segundo, tipo });
+    lineas.push({ segundo, tipo, compas: numero });
   }
   return lineas;
 }
