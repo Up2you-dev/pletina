@@ -97,6 +97,16 @@ describe('analizarLote', () => {
     expect(vistos).toEqual([null]);
   });
 
+  it('solo el que fuerza pide sustituir lo puesto a mano', async () => {
+    // Un repaso de la biblioteca no puede borrar el tempo que alguien marcó a
+    // golpes; volver a analizar ESA canción, sí.
+    const guardadas = [];
+    const guardar = async (id, resultado) => guardadas.push(resultado.sustituirAMano);
+    await analizarLote(['a'], { analizar: async () => ({}), guardar });
+    await analizarLote(['b'], { analizar: async () => ({}), guardar, forzar: true });
+    expect(guardadas).toEqual([false, true]);
+  });
+
   it('no admite dos lotes a la vez', async () => {
     const primero = analizarLote(['a', 'b'], {
       analizar: async () => { await espera(5); return {}; },

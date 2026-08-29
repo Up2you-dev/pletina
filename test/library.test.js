@@ -585,6 +585,34 @@ describe('análisis y rejilla', () => {
     expect(track.bpm).toBeCloseTo(127.312, 3);
   });
 
+  it('un repaso de la biblioteca no pisa la rejilla puesta a mano', () => {
+    // Marcar el tempo a golpes y poner el «uno» a ojo es trabajo de una
+    // persona, y una versión nueva del análisis lo borraba sin decir nada.
+    const id = library.listTracks()[0].id;
+    library.setAnalysis(id, { bpm: 127.312, rejilla });
+    library.ajustarRejilla(id, { bpm: 140, offset: 0.31 });
+
+    library.setAnalysis(id, { bpm: 70, rejilla: { ...rejilla, bpm: 70, offset: 0.9 } });
+
+    const track = library.listTracks()[0];
+    expect(track.rejilla).toMatchObject({ bpm: 140, offset: 0.31, aMano: true });
+    // Y el número que se enseña es el de la rejilla que se queda.
+    expect(track.bpm).toBeCloseTo(140, 3);
+  });
+
+  it('pero volver a analizar esa canción sí la sustituye', () => {
+    const id = library.listTracks()[0].id;
+    library.setAnalysis(id, { bpm: 127.312, rejilla });
+    library.ajustarRejilla(id, { bpm: 140, offset: 0.31 });
+
+    library.setAnalysis(id, {
+      bpm: 70, rejilla: { ...rejilla, bpm: 70, offset: 0.9 }, sustituirAMano: true,
+    });
+
+    expect(library.listTracks()[0].rejilla).toMatchObject({ bpm: 70, offset: 0.9 });
+    expect(library.listTracks()[0].rejilla.aMano).toBeUndefined();
+  });
+
   it('el tempo se puede contar al doble sin mover un solo golpe de sitio', () => {
     // Un drum & bass son 174 o son 87 según a quién le preguntes, y ninguna
     // máquina acierta siempre. Lo que no puede pasar es que al llevarle la

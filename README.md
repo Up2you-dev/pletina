@@ -58,7 +58,7 @@ npm run dist:win     # y esto te deja el instalador en release\
 Y para lo demás:
 
 ```bash
-npm run verify       # lint + 338 pruebas + arranque real, arrastre, mezcla, cadena y rejilla
+npm run verify       # lint + 363 pruebas + arranque real, arrastre, mezcla, cadena y rejilla
 npm run dist:mac     # .dmg (arm64 + x64)  · hay que ejecutarlo EN un Mac
 npm run dist:linux   # AppImage + .deb
 ```
@@ -248,6 +248,19 @@ que las distingue, porque una rejilla a la mitad cae solo sobre golpes fuertes
 —buena media— pero el punto medio entre sus golpes cae encima de los que se ha
 saltado, y ahí se delata. La octava se decide con el grupo entero y la fase con
 el bombo: cada cosa con lo que sabe.
+
+**Y mirando las bandas por separado, que es lo que aguanta un máster.** El
+contraste solo no basta cuando la canción viene apretada por un limitador, que
+es como viene toda: al soltar, el limitador deja agachado lo que suena justo
+después de un bombo, así que la caja del dos y del cuatro sale más floja que el
+bombo del uno y del tres y la rejilla de la mitad empieza a parecer la buena.
+Sumadas las bandas no hay manera de verlo —el bombo tapa a la caja—, así que se
+mira cada una por su lado: si en alguna hay más energía *entre* las marcas que
+*en* las marcas, esa rejilla se está saltando tiempos y se manda al final de la
+lista. Un charle a contratiempo no cuenta, que de eso está lleno el house: el
+suspenso solo vale cuando hay una rejilla al doble a la que irse. Medido sobre
+ciento doce canciones fabricadas y masterizadas, con once decibelios de cresta,
+que es un máster normal.
 
 **La confianza dice la verdad.** No es «cuánta energía he encontrado» sino lo que
 destacan los golpes multiplicado por lo bien que un solo tempo explica la canción

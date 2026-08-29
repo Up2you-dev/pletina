@@ -36,8 +36,14 @@ export const SALTO = 64;
  *   4 · octava resuelta —el doble y la mitad ya no se cuelan— y confianza que
  *       dice la verdad. Las rejillas de la 3 pueden ir al doble o a la mitad
  *       del tempo que suena y no hay manera de saber cuáles: se rehacen.
+ *   5 · la octava se decide mirando las bandas por separado. Las de la 4 se
+ *       midieron con música sin masterizar, que no existe: con un máster
+ *       normal una de cada seis se iba a la mitad del tempo, y con confianza
+ *       uno. No se puede saber cuáles, así que se rehacen. Las rejillas de la
+ *       4 siguen sirviendo para pinchar mientras tanto —no se borra nada— y
+ *       las puestas a mano no las toca ni el repaso.
  */
-export const ANALISIS_VERSION = 4;
+export const ANALISIS_VERSION = 5;
 /** La rejilla es utilizable desde la versión 3, que es la que resuelve octavas. */
 export const REJILLA_VERSION = 3;
 
@@ -111,39 +117,49 @@ function pasoBajo(muestras, tasa, corte) {
  * Envolventes de la canción, en marcos de `salto` muestras:
  *
  * - `grave`: energía nueva en la banda del bombo. Es la que manda para cuadrar.
+ * - `agudo`: energía nueva por encima de esa banda, que es donde vive la caja
+ *   y el charles. Separarla del bombo es lo que permite saber si una rejilla
+ *   se está saltando la mitad de los tiempos: sumadas, el bombo tapa la caja.
  * - `total`: energía nueva en toda la banda, para cuando el bombo es flojo.
  * - `energia`: el nivel, sin derivar, que es donde se ve la estructura.
  *
- * De las dos primeras solo interesa cuando la energía SUBE: eso es un ataque y
- * no un sostenido.
+ * De las tres primeras solo interesa cuando la energía SUBE: eso es un ataque
+ * y no un sostenido.
  */
 export function envolventes(muestras, tasa, { salto = SALTO, corte = GRAVE_MAX } = {}) {
   const marcos = Math.max(0, Math.floor((muestras?.length ?? 0) / salto));
   const grave = new Float32Array(marcos);
+  const agudo = new Float32Array(marcos);
   const total = new Float32Array(marcos);
   const energia = new Float32Array(marcos);
-  if (!marcos) return { grave, total, energia, tasa: tasa / salto };
+  if (!marcos) return { grave, agudo, total, energia, tasa: tasa / salto };
 
   const graves = pasoBajo(muestras, tasa, corte);
   const nivelGrave = new Float32Array(marcos);
+  const nivelAgudo = new Float32Array(marcos);
   for (let i = 0; i < marcos; i += 1) {
     let sumaGrave = 0;
+    let sumaAgudo = 0;
     let sumaTotal = 0;
     const desde = i * salto;
     for (let j = 0; j < salto; j += 1) {
       const g = graves[desde + j];
       const t = muestras[desde + j];
+      const a = t - g;
       sumaGrave += g * g;
+      sumaAgudo += a * a;
       sumaTotal += t * t;
     }
     nivelGrave[i] = Math.sqrt(sumaGrave / salto);
+    nivelAgudo[i] = Math.sqrt(sumaAgudo / salto);
     energia[i] = Math.sqrt(sumaTotal / salto);
   }
   for (let i = 1; i < marcos; i += 1) {
     grave[i] = Math.max(0, nivelGrave[i] - nivelGrave[i - 1]);
+    agudo[i] = Math.max(0, nivelAgudo[i] - nivelAgudo[i - 1]);
     total[i] = Math.max(0, energia[i] - energia[i - 1]);
   }
-  return { grave, total, energia, tasa: tasa / salto };
+  return { grave, agudo, total, energia, tasa: tasa / salto };
 }
 
 /* -------------------------------------------------------------- rejilla */
@@ -193,6 +209,30 @@ export function contraste(envolvente, periodo, fase) {
     n += 1;
   }
   return n ? (dentro - fuera) / n : 0;
+}
+
+/**
+ * Cuánto destaca una rejilla DENTRO DE UNA BANDA, de −1 a 1.
+ *
+ * Es el contraste de arriba pero como proporción y no como resta, para poder
+ * comparar bandas que no pegan igual de fuerte: 1 es «todos los golpes encima
+ * de la rejilla», 0 es «igual dentro que fuera» y −1 es «los golpes caen justo
+ * entre las marcas». Lo que hace falta saber es el signo.
+ */
+export function limpiezaDeBanda(envolvente, periodo, fase) {
+  let dentro = 0;
+  let fuera = 0;
+  let n = 0;
+  const mitad = periodo / 2;
+  const limite = (envolvente?.length ?? 0) - 1 - mitad;
+  for (let marco = fase; marco < limite; marco += periodo) {
+    if (marco < 0) continue;
+    dentro += leer(envolvente, marco);
+    fuera += leer(envolvente, marco + mitad);
+    n += 1;
+  }
+  if (!n || dentro + fuera <= 0) return 0;
+  return (dentro - fuera) / (dentro + fuera);
 }
 
 const rango = (centro, radio, pasos) => Array.from(
@@ -337,9 +377,10 @@ const preferencia = (bpm, ancho = ANCHO_COSTUMBRE) => Math.exp(
  * las de alrededor con un ajuste barato —para elegir octava no hace falta
  * afinar— y gana la que más contraste saca, con la costumbre de desempate.
  */
-export function elegirTempo(envolvente, tasaEnvolvente, bpmAprox, { ancho } = {}) {
+export function elegirTempo(envolvente, tasaEnvolvente, bpmAprox, { ancho, bandas = null } = {}) {
   const nada = { bpm: 0, contraste: 0 };
   if (!envolvente?.length || !bpmAprox || !tasaEnvolvente) return nada;
+  const porBandas = (bandas ?? []).filter((banda) => banda?.length);
   const tanteos = [];
   for (const multiplo of MULTIPLOS) {
     const bpm = bpmAprox * multiplo;
@@ -354,13 +395,40 @@ export function elegirTempo(envolvente, tasaEnvolvente, bpmAprox, { ancho } = {}
     // canciones rápidas saliera a la mitad, y con confianza 1, sin ningún aviso.
     const periodo = (60 / tanteo.bpm) * tasaEnvolvente;
     let separacion = -Infinity;
+    let mejorFase = 0;
     for (let p = 0; p < 96; p += 1) {
-      const c = contraste(envolvente, periodo, (p / 96) * periodo);
-      if (c > separacion) separacion = c;
+      const fase = (p / 96) * periodo;
+      const c = contraste(envolvente, periodo, fase);
+      if (c > separacion) { separacion = c; mejorFase = fase; }
     }
-    tanteos.push({ bpm: tanteo.bpm, contraste: separacion, valor: separacion * preferencia(tanteo.bpm, ancho) });
+    // La prueba de la contra: un tempo bueno tiene los golpes encima de la
+    // rejilla en TODAS las bandas. Si en alguna hay más energía entre marca y
+    // marca que en las marcas —la caja del dos y del cuatro cuando la rejilla
+    // va a la mitad—, esa rejilla se está saltando tiempos, por mucho que en la
+    // suma de bandas parezca la que más destaca: el bombo tapa a la caja al
+    // sumarlas y por eso la resta de siempre no lo ve. Es la corrección que
+    // sostiene la octava cuando la canción viene masterizada, que es siempre.
+    const contra = porBandas.length
+      ? Math.min(...porBandas.map((banda) => limpiezaDeBanda(banda, periodo, mejorFase)))
+      : 1;
+    tanteos.push({
+      bpm: tanteo.bpm,
+      contraste: separacion,
+      valor: separacion * preferencia(tanteo.bpm, ancho),
+      contra,
+    });
   }
   if (!tanteos.length) return nada;
+  // El suspenso solo cuenta contra quien tiene el doble a mano. «Se salta
+  // tiempos» no significa nada si no hay una rejilla al doble entre las
+  // candidatas: en un house con el charles a contratiempo la banda aguda
+  // también sale del revés, y ahí no falta ningún tiempo, sobra un charle.
+  const hayDoble = (bpm) => tanteos.some((otro) => Math.abs(otro.bpm - 2 * bpm) < bpm * 0.06);
+  for (const tanteo of tanteos) {
+    // No se descarta del todo, se manda al final: si todas las octavas
+    // suspenden, más vale la mejor de ellas que ninguna.
+    if (tanteo.contra <= 0 && hayDoble(tanteo.bpm)) tanteo.valor *= 0.05;
+  }
   tanteos.sort((a, b) => b.valor - a.valor);
   // La distancia hasta la segunda octava se midió y se descartó como aviso: en
   // noventa y seis canciones fabricadas avisaba de cuatro de los nueve fallos
@@ -382,11 +450,11 @@ export function elegirTempo(envolvente, tasaEnvolvente, bpmAprox, { ancho } = {}
  * el instante exacto y el que se oye cuando dos canciones no cuadran.
  */
 export function elegirRejilla(envolvente, tasaEnvolvente, bpmAprox, {
-  desde = 0, octavas = null,
+  desde = 0, octavas = null, bandas = null,
 } = {}) {
   const vacia = { bpm: 0, offset: 0, fuerza: 0 };
   if (!envolvente?.length || !bpmAprox || !tasaEnvolvente) return vacia;
-  const { bpm } = elegirTempo(octavas ?? envolvente, tasaEnvolvente, bpmAprox);
+  const { bpm } = elegirTempo(octavas ?? envolvente, tasaEnvolvente, bpmAprox, { bandas });
   if (!bpm) return vacia;
   // Margen corto: la octava ya está decidida y aquí solo se afina.
   return ajustarRejilla(envolvente, tasaEnvolvente, bpm, { desde, margen: 0.02 });
@@ -548,14 +616,16 @@ export function primerSonido(energia, tasaEnvolvente, { fraccion = 0.15, percent
  * `desde` es el segundo en el que empieza el tramo que se le pasa.
  */
 export function rejillaCompleta(muestras, tasa, bpmAprox, { desde = 0, tiemposPorCompas = 4 } = {}) {
-  const { grave, total, energia, tasa: tasaEnv } = envolventes(muestras, tasa);
+  const { grave, agudo, total, energia, tasa: tasaEnv } = envolventes(muestras, tasa);
   const fuerzaGrave = grave.reduce((s, v) => s + v, 0);
   const fuerzaTotal = total.reduce((s, v) => s + v, 0);
   // Si el bombo apenas pesa, la envolvente completa marca mejor el pulso.
   const porBombo = fuerzaGrave > fuerzaTotal * 0.08;
   const elegida = porBombo ? grave : total;
 
-  const rejilla = elegirRejilla(elegida, tasaEnv, bpmAprox, { desde, octavas: total });
+  const rejilla = elegirRejilla(elegida, tasaEnv, bpmAprox, {
+    desde, octavas: total, bandas: [grave, agudo],
+  });
   const deriva = medirDeriva(elegida, tasaEnv, rejilla.bpm);
   const compas = detectarCompas(elegida, tasaEnv, rejilla, { desde, tiemposPorCompas });
   const frase = detectarFrase(energia, tasaEnv, { ...rejilla, tiempoFuerte: compas.tiempoFuerte }, {

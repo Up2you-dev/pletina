@@ -389,7 +389,14 @@ export function createLibrary({ store, covers, escritor = escritorPorDefecto, on
       // mezclador sabe a qué velocidad ir, pero no cuándo entrar.
       const rejilla = datos.rejilla ?? null;
       const cero = (v) => Math.max(0, Number(v) || 0);
-      track.rejilla = rejilla && Number(rejilla.bpm) > 0 ? {
+      // Lo puesto a mano manda. Un repaso de la biblioteca —el que dispara una
+      // versión nueva del análisis, por ejemplo— pasaba por encima del tempo
+      // que alguien había marcado golpeando y del «uno» que había puesto a
+      // ojo, sin avisar y sin manera de recuperarlo. Ese trabajo no se tira: se
+      // sustituye solo cuando se pide volver a analizar esa canción.
+      const aManoQueSeQueda = track.rejilla?.aMano && !datos.sustituirAMano
+        ? track.rejilla : null;
+      track.rejilla = aManoQueSeQueda ?? (rejilla && Number(rejilla.bpm) > 0 ? {
         bpm: Math.round(Number(rejilla.bpm) * 1000) / 1000,
         offset: cero(rejilla.offset),
         tiempoFuerte: Math.min(7, Math.max(0, Math.round(Number(rejilla.tiempoFuerte) || 0))),
@@ -409,7 +416,10 @@ export function createLibrary({ store, covers, escritor = escritorPorDefecto, on
         // Sin versión son rejillas viejas, de cuando el tempo se estimaba: se
         // guardan tal cual, pero la aplicación las tratará como pendientes.
         version: Math.max(1, Math.round(Number(rejilla.version) || 1)),
-      } : null;
+      } : null);
+      // El tempo que se enseña es el de la rejilla que se queda: si no, la
+      // ficha diría un número y el mezclador pincharía con otro.
+      if (aManoQueSeQueda) track.bpm = aManoQueSeQueda.bpm;
       // Si hay onda dibujable, se apunta: el archivo vive aparte, en `ondas/`.
       track.onda = Boolean(datos.onda);
       track.analisis = {

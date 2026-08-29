@@ -117,3 +117,73 @@ export function cancion({
   for (let i = 0; i < muestras.length; i += 1) muestras[i] += azar() * 0.004;
   return { muestras, tasa };
 }
+
+/**
+ * El paso que faltaba: la masterización.
+ *
+ * Todo lo de arriba sale con veinte decibelios de margen entre el pico y la
+ * media, y no existe una sola canción publicada así. Un máster pasa por un
+ * limitador: sube el nivel hasta que los picos chocan contra el techo, y lo
+ * que suena justo después de un bombo se queda agachado mientras el limitador
+ * suelta. Eso no es un detalle de volumen, es exactamente lo que confunde a un
+ * detector de tempo: la caja del dos y del cuatro sale más floja que el bombo
+ * del uno y del tres, y entonces la rejilla de la mitad parece la buena.
+ *
+ * Sin este paso, las pruebas de análisis se hacían con música que no existe.
+ *
+ * `drive` son los decibelios que se empujan contra el limitador. Seis dejan la
+ * cresta en unos once decibelios, que es un máster normal; catorce la dejan
+ * cerca de nueve, que es un máster que va alto. Por encima de eso lo que sale
+ * ya no se parece a una canción: se parece a una pared, y no vale para medir.
+ */
+export function masterizar(muestras, {
+  drive = 6, ataque = 0.003, soltar = 0.15, tasa = 11025, objetivo = 0.18,
+} = {}) {
+  const n = muestras.length;
+  const salida = new Float32Array(n);
+  if (!n) return salida;
+  const nivel = rms(muestras);
+  if (!(nivel > 0)) return salida;
+  const ganancia = (10 ** (drive / 20) / nivel) * objetivo;
+  const subir = Math.exp(-1 / Math.max(1, ataque * tasa));
+  const bajar = Math.exp(-1 / Math.max(1, soltar * tasa));
+  let seguimiento = 0;
+  for (let i = 0; i < n; i += 1) {
+    const x = Math.abs(muestras[i]) * ganancia;
+    // Ataque rápido y soltar lento: es el bombeo lo que hay que reproducir.
+    seguimiento = x > seguimiento
+      ? subir * seguimiento + (1 - subir) * x
+      : bajar * seguimiento + (1 - bajar) * x;
+    const reduccion = seguimiento > 0.9 ? 0.9 / seguimiento : 1;
+    salida[i] = Math.tanh(muestras[i] * ganancia * reduccion);
+  }
+  // Ganancia de recuperación a un nivel fijo, como un máster que va alto.
+  const recuperar = objetivo / (rms(salida) || 1);
+  for (let i = 0; i < n; i += 1) {
+    salida[i] = Math.max(-1, Math.min(1, salida[i] * recuperar));
+  }
+  return salida;
+}
+
+const rms = (muestras) => {
+  let suma = 0;
+  for (let i = 0; i < muestras.length; i += 1) suma += muestras[i] * muestras[i];
+  return Math.sqrt(suma / (muestras.length || 1));
+};
+
+/** Decibelios entre el pico y la media: cuánto margen dinámico le queda. */
+export function cresta(muestras) {
+  let pico = 0;
+  for (let i = 0; i < muestras.length; i += 1) {
+    const v = Math.abs(muestras[i]);
+    if (v > pico) pico = v;
+  }
+  const medio = rms(muestras);
+  return medio > 0 ? 20 * Math.log10(pico / medio) : 0;
+}
+
+/** Una canción de mentira ya masterizada, que es como suenan las de verdad. */
+export function cancionMasterizada({ drive = 6, ...opciones } = {}) {
+  const { muestras, tasa } = cancion(opciones);
+  return { muestras: masterizar(muestras, { drive, tasa }), tasa };
+}

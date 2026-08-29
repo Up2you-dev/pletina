@@ -102,8 +102,31 @@ describe('envolventes', () => {
   });
 
   it('con una señal muda no inventa golpes', () => {
-    const { grave } = envolventes(new Float32Array(11025 * 4), 11025);
+    const { grave, agudo } = envolventes(new Float32Array(11025 * 4), 11025);
     expect(grave.every((v) => v === 0)).toBe(true);
+    expect(agudo.every((v) => v === 0)).toBe(true);
+  });
+
+  it('el bombo va en la banda grave y el charle en la aguda', () => {
+    // Separarlas es lo que permite saber si una rejilla se salta tiempos: en
+    // la suma, el bombo tapa a la caja y no hay manera de verlo.
+    const tasa = 11025;
+    const muestras = new Float32Array(tasa * 2);
+    for (let i = 0; i < tasa * 0.12; i += 1) {
+      muestras[Math.floor(tasa * 0.5) + i] = Math.sin((2 * Math.PI * 55 * i) / tasa) * Math.exp(-i / (tasa * 0.02));
+    }
+    const azar = ruido(3);
+    for (let i = 0; i < tasa * 0.04; i += 1) {
+      muestras[Math.floor(tasa * 1.5) + i] = azar() * Math.exp(-i / (tasa * 0.006));
+    }
+    const { grave, agudo, tasa: tasaEnv } = envolventes(muestras, tasa);
+    const picoEn = (banda) => {
+      let mejor = 0;
+      for (let i = 1; i < banda.length; i += 1) if (banda[i] > banda[mejor]) mejor = i;
+      return mejor / tasaEnv;
+    };
+    expect(picoEn(grave)).toBeCloseTo(0.5, 1);
+    expect(picoEn(agudo)).toBeCloseTo(1.5, 1);
   });
 });
 

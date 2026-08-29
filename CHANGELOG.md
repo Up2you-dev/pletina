@@ -4,6 +4,65 @@ Las versiones siguen [SemVer](https://semver.org/lang/es/). Cada una se
 construye desde la pestaña *Actions* del repositorio; una etiqueta `v1.2.3`
 además publica los instaladores sueltos en la página de versiones.
 
+## 5.1.0 — 2026-08-29
+
+La auditoría de la 5.0.0 dejó un hallazgo pendiente y era el bueno: **las
+pruebas del análisis se hacían con música sin masterizar, que no existe.**
+
+### El limitador es el enemigo, y no estaba en las pruebas
+
+- **Las canciones de prueba salían con dieciocho decibelios de cresta.** Nadie
+  publica nada así: todo pasa por un limitador que sube el nivel hasta que los
+  picos chocan con el techo. Y eso no es un detalle de volumen para un detector
+  de tempo, es justo lo que lo rompe: al soltar, el limitador deja agachado lo
+  que suena inmediatamente después de un bombo, así que la caja del dos y del
+  cuatro sale más floja que el bombo del uno y del tres, y entonces la rejilla
+  de **la mitad** del tempo parece la buena. Con confianza uno, sin ningún aviso.
+- **Medido sobre 112 canciones fabricadas** —siete patrones por dieciséis
+  tempos—: sin masterizar se iban de octava 5; con un máster normal (once
+  decibelios de cresta), **18**; con un máster que va alto (nueve y medio),
+  **57**. Una de cada dos. Eso es exactamente «no cuadra ni analiza bien», y no
+  se veía porque las pruebas usaban música que no se parece a la de verdad.
+
+### La corrección: mirar las bandas por separado
+
+- **La octava ya no se decide sobre la suma de las bandas.** En la suma, el
+  bombo tapa a la caja y no hay manera de ver que la rejilla se está saltando
+  tiempos. Ahora se mira la banda del bombo y la de caja y charles por su lado:
+  si en alguna hay más energía **entre** las marcas que **en** las marcas, esa
+  rejilla se salta tiempos y se manda al final de la lista.
+- **El charle a contratiempo no cuenta como tiempo que falta.** Medio house
+  lleva el charle abierto justo entre bombo y bombo, y ahí la banda aguda sale
+  del revés sin que sobre ni falte nada. El suspenso solo vale cuando hay una
+  rejilla al doble a la que irse; a 128 el doble ya no es música.
+- **Resultado, con las mismas 112 canciones:** sin masterizar 5 → **3**; máster
+  normal 18 → **16**; máster alto 57 → **47**. Un drum and bass masterizado a
+  174 que salía a 87 —media hora de mezcla que no cuadra— ahora sale a 174.
+- **Sigue habiendo un límite y está escrito:** un shuffle masterizado se lee a
+  compás y medio (104 → 156). Tiene su prueba, con su nombre, para que se vea
+  en vez de esconderse.
+
+### Lo que ya estaba analizado
+
+- **El análisis sube a la versión 5 y lo anterior cuenta como pendiente.** Las
+  rejillas de la 4 se midieron con el criterio viejo y no hay manera de saber
+  cuáles se fueron a la mitad, así que la aplicación las ofrece para rehacer.
+  No se borra nada: las de la 4 siguen sirviendo para pinchar mientras tanto.
+- **Y una rejilla puesta a mano ya no la pisa nadie.** El tempo marcado a
+  golpecitos y el «uno» colocado a ojo son trabajo de una persona, y hasta
+  ahora un repaso de la biblioteca los borraba sin decir nada. Ahora sobreviven
+  a cualquier reanálisis en lote; solo los sustituye quien pide volver a
+  analizar **esa** canción.
+
+### Pruebas
+
+- `masterizar()` en los ficheros de prueba: un limitador con ataque, soltar y
+  saturación, con la cresta como mando. Hay una prueba que vigila que aprieta
+  lo que tiene que apretar, porque si alguien lo afloja las demás dejan de
+  significar nada.
+- Las ocho canciones de referencia se analizan ahora dos veces, crudas y
+  masterizadas, en tempo y en fase. 363 pruebas.
+
 ## 5.0.0 — 2026-08-28
 
 Una auditoría contra rekordbox, Serato, Traktor, VirtualDJ y Mixxx, con diez

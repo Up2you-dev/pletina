@@ -69,7 +69,11 @@ export async function analizarLote(ids, {
     alProgreso({ ...trabajo });
     try {
       const resultado = await analizar(id);
-      await guardar(id, resultado);
+      // Una rejilla puesta a mano no la pisa un repaso de la biblioteca: la ha
+      // mirado una persona y vale más que cualquier análisis. Solo la sustituye
+      // quien pide expresamente volver a analizar ESA canción, que es justo lo
+      // que `forzar` significa aquí.
+      await guardar(id, { ...resultado, sustituirAMano: forzar });
       trabajo.hechas += 1;
     } catch (error) {
       // Una canción rota no puede tumbar el lote: se cuenta y se sigue. Pero se
