@@ -440,6 +440,19 @@ function registerIpc() {
   });
   handle('tracks:onda', (id) => ondasStore.leer(id));
   handle('tracks:rejilla', (id, cambio) => library.ajustarRejilla(id, cambio ?? {}));
+  handle('tracks:cue', (id, cue) => library.ponerCue(id, cue ?? {}));
+  handle('rekordbox:import', async (opciones) => {
+    const elegido = await dialog.showOpenDialog(mainWindow, {
+      title: 'Importar la colección de rekordbox',
+      buttonLabel: 'Importar',
+      properties: ['openFile'],
+      filters: [{ name: 'Colección de rekordbox', extensions: ['xml'] }],
+    });
+    if (elegido.canceled || !elegido.filePaths.length) return { ok: false, canceled: true };
+    const resultado = await library.importarRekordbox(elegido.filePaths[0], opciones ?? {});
+    if (resultado.ok) send('library:changed', { reason: 'rekordbox', summary: resultado });
+    return resultado;
+  });
   handle('tracks:cover', async (ids, opciones) => {
     const lista = Array.isArray(ids) ? ids : [];
     if (!lista.length) return { ok: false };

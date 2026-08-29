@@ -41,8 +41,23 @@ let avisadoFinal = false;
 /** La tira de canal, tal como la ha dejado la persona, por plato. */
 const NEUTRA = { grave: 0, medio: 0, agudo: 0, filtro: 0, volumen: 1 };
 const tiras = { a: { ...NEUTRA }, b: { ...NEUTRA } };
-/** Cuánto suena el plato preparado cuando se preescucha. */
+/** Cuánto suena el plato preparado cuando se preescucha por la salida de la sala. */
 const PREESCUCHA = 0.55;
+/**
+ * El fader de tempo del plato preparado, en tanto por ciento.
+ *
+ * El del plato que suena no vive aquí: ese ES el tempo del reproductor, y
+ * tenerlo dos veces sería tener dos verdades. Este es el del plato B, que hasta
+ * ahora estaba clavado a ×1 y por eso no se podía cuadrar a mano: la canción
+ * que preparabas sonaba a su tempo y no al que iba a entrar.
+ */
+let faderB = 0;
+const factorB = () => 1 + faderB / 100;
+/** El bucle en marcha, si lo hay: `{ cual, desde, hasta, compases }`. */
+let bucle = null;
+let vigilante = null;
+/** Cómo están puestos los cascos. */
+const cascos = { plato: null, mezcla: 0, volumen: 0.8, dispositivo: '' };
 /**
  * Qué plato tiene algo preparado, o null.
  *
@@ -100,6 +115,8 @@ export function estadoDePlatos() {
     tiempo: p.el.currentTime || 0,
     velocidad: p.el.playbackRate,
     estirando: p.el.preservesPitch !== false,
+    // Lo que marca el fader de ese plato, que es lo que se lee en la cabina.
+    fader: Math.round((p.el.playbackRate - 1) * 10000) / 100,
     sonando: !p.el.paused,
     ganancia: p.nodos ? Math.round(p.nodos.ganancia.gain.value * 100) / 100 : null,
     grave: p.nodos ? Math.round(p.nodos.grave.gain.value * 10) / 10 : null,
@@ -128,8 +145,10 @@ export function prepararPlato(id, { en = 0, escuchar = false } = {}) {
   platoConPreparada = 1 - activo;
   libre.id = id;
   libre.el.src = window.pletina.media.track(id);
-  libre.el.preservesPitch = true;
-  libre.el.playbackRate = 1;
+  libre.el.preservesPitch = tempo.preservarTono;
+  // Con su fader puesto: el plato que preparas tiene que sonar como va a
+  // entrar, no a su tempo de archivo. Sin esto no hay manera de cuadrar a mano.
+  libre.el.playbackRate = factorB();
   motor.limpiarPlato(libre.nodos);
   fijarGanancia(libre, escuchar ? PREESCUCHA : 0);
 
@@ -216,6 +235,7 @@ export function escucharPreparado(activar) {
 export function soltarPreparado() {
   const libre = preparado();
   if (!libre || encadenando) return false;
+  if (bucle?.cual === 'b') quitarBucle();
   libre.el.pause();
   libre.el.removeAttribute('src');
   libre.id = null;
@@ -234,6 +254,161 @@ export function estadoPreparado() {
     escuchando: !libre.el.paused,
     listo: libre.el.readyState >= 1,
   };
+}
+
+/* ---------------------------------------------------- el fader de cada plato */
+
+/**
+ * El fader de tempo de un plato, en tanto por ciento.
+ *
+ * El del plato que suena es el tempo del reproductor: mover uno mueve el otro,
+ * porque son lo mismo y tener dos verdades es cómo se descuadra una cabina. El
+ * del plato preparado es suyo, y es lo que permite cuadrar a mano antes de
+ * pinchar: se sube o se baja hasta que los bombos caen juntos.
+ */
+export function ajustarFader(cual, porcentaje) {
+  const valor = Math.max(-20, Math.min(20, Number(porcentaje) || 0));
+  if (cual === 'b') {
+    faderB = valor;
+    const libre = preparado();
+    if (libre) {
+      libre.el.preservesPitch = tempo.preservarTono;
+      libre.el.playbackRate = factorB();
+    }
+    hooks.onPreparado?.(estadoPreparado());
+    return faderDePlato('b');
+  }
+  ajustarVelocidad(1 + valor / 100);
+  return faderDePlato('a');
+}
+
+/** Lo que marca el fader de un plato, para que la cabina no se lo invente. */
+export function faderDePlato(cual) {
+  const valor = cual === 'b' ? faderB : (tempo.velocidad - 1) * 100;
+  return Math.round(valor * 100) / 100;
+}
+
+/* ----------------------------------------------------------------- bucles */
+
+/**
+ * Deja un plato dando vueltas entre dos instantes.
+ *
+ * Lo cuadrado lo pone quien llama: aquí solo se respeta el tramo. La vuelta se
+ * da conservando la fase —lo que se pasa del final se descuenta del principio—
+ * para que el bucle no se vaya arrastrando una miga en cada vuelta, que es lo
+ * que lo convierte en un tartamudeo al cabo de dieciséis compases.
+ *
+ * La granularidad es la de un cuadro de pantalla: un elemento de audio no deja
+ * programar un salto en el reloj del sonido, así que el corte cae donde cae. Se
+ * oye limpio en el sitio —el salto es a un golpe— y no pretende ser más.
+ */
+export function ponerBucle(cual, desde, hasta, compases = 0) {
+  const objetivo = cual === 'b' ? preparado() : plato();
+  if (!objetivo?.id || !(hasta > desde)) return null;
+  bucle = {
+    cual, desde: Math.max(0, desde), hasta, compases,
+  };
+  vigilar();
+  return { ...bucle };
+}
+
+export function quitarBucle() {
+  bucle = null;
+  if (vigilante) cancelAnimationFrame(vigilante);
+  vigilante = null;
+  return true;
+}
+
+export const bucleActual = () => (bucle ? { ...bucle } : null);
+
+function vigilar() {
+  if (vigilante) cancelAnimationFrame(vigilante);
+  const paso = () => {
+    vigilante = null;
+    if (!bucle) return;
+    const objetivo = bucle.cual === 'b' ? preparado() : plato();
+    if (!objetivo?.id) { bucle = null; return; }
+    const ahora = objetivo.el.currentTime || 0;
+    // Fuera del tramo por delante: se vuelve al principio conservando lo que se
+    // ha pasado. Fuera por detrás —alguien ha saltado— el bucle deja de tener
+    // sentido y se suelta, en vez de arrastrar el plato de vuelta.
+    if (ahora >= bucle.hasta) {
+      const largo = bucle.hasta - bucle.desde;
+      const sobra = (ahora - bucle.hasta) % largo;
+      try {
+        objetivo.el.currentTime = bucle.desde + sobra;
+      } catch {
+        /* sin metadatos todavía: se intentará en el cuadro siguiente */
+      }
+    } else if (ahora < bucle.desde - 0.5) {
+      bucle = null;
+      return;
+    }
+    vigilante = requestAnimationFrame(paso);
+  };
+  vigilante = requestAnimationFrame(paso);
+}
+
+/* ------------------------------------------------- saltar dentro de un plato */
+
+/** Lleva un plato a un instante exacto: un punto de referencia, un compás. */
+export function saltarEn(cual, segundo) {
+  if (!Number.isFinite(segundo)) return false;
+  if (cual === 'b') return moverPreparado(Math.max(0, segundo));
+  const el = plato().el;
+  if (!el.src) return false;
+  try {
+    el.currentTime = Math.max(0, segundo);
+  } catch {
+    return false;
+  }
+  return true;
+}
+
+/** Dónde está cada plato ahora mismo, para poder poner un punto ahí. */
+export function tiempoDePlato(cual) {
+  if (cual === 'b') return preparado()?.el.currentTime ?? 0;
+  return plato().el.currentTime || 0;
+}
+
+export const idDePlato = (cual) => (cual === 'b' ? preparado()?.id ?? null : plato().id);
+
+/* ------------------------------------------------------------------ cascos */
+
+/**
+ * La preescucha por la otra salida.
+ *
+ * Es lo que separa una cabina de un reproductor: oír por los auriculares lo que
+ * todavía no suena en la sala. Cuando el equipo no tiene una segunda salida, la
+ * preescucha sigue siendo la de siempre —el plato preparado sonando bajito por
+ * donde suena todo—, y la cabina lo dice en vez de ofrecer un mando muerto.
+ */
+export const hayCascos = () => Boolean(motor?.hayCascos);
+
+export function ponerCascos({ plato: cual, mezcla, volumen, dispositivo } = {}) {
+  if (!motor) return { ...cascos };
+  if (cual !== undefined) cascos.plato = cual;
+  if (Number.isFinite(mezcla)) cascos.mezcla = Math.max(0, Math.min(1, mezcla));
+  if (Number.isFinite(volumen)) cascos.volumen = Math.max(0, Math.min(1.5, volumen));
+  if (typeof dispositivo === 'string') cascos.dispositivo = dispositivo;
+
+  motor.despertar();
+  for (const [nombre, p] of [['a', plato()], ['b', preparado() ?? otro()]]) {
+    motor.ajustarCascos(p?.nodos, cascos.plato === nombre ? 1 : 0);
+  }
+  motor.mezclaDeCascos(cascos.mezcla);
+  motor.volumenDeCascos(cascos.plato ? cascos.volumen : 0);
+  return { ...cascos };
+}
+
+export const estadoCascos = () => ({ ...cascos, hay: hayCascos() });
+
+/** Manda los cascos a un dispositivo. Devuelve si el sistema lo ha aceptado. */
+export async function elegirSalidaDeCascos(deviceId) {
+  if (!motor) return false;
+  const hecho = await motor.salidaDeCascos(deviceId);
+  if (hecho) cascos.dispositivo = deviceId || '';
+  return hecho;
 }
 
 /**
@@ -349,6 +524,7 @@ export function load(id, { play = true, position = 0 } = {}) {
   const track = getTrack(id);
   if (!track) return false;
   cancelarFundido();
+  if (bucle?.cual === 'a') quitarBucle();
   const actual = plato();
   actual.id = id;
   state.currentId = id;
@@ -516,7 +692,11 @@ export function mezclar(id, plan, { estirarTiempo = true } = {}) {
 
   // La mezcla manda sobre el tempo: a partir de aquí el reproductor va al que
   // ha decidido el plan, y el panel de sonido lo refleja.
-  const velEntrante = plan.velocidad || 1;
+  // El plan viene calculado sobre el tempo al que YA suena el plato preparado
+  // —o sea, con su fader puesto—, así que la velocidad final del elemento es
+  // una cosa por la otra. Sin esto, cuadrar a mano y luego pulsar «igualar el
+  // tempo» aplicaba el ajuste dos veces y la mezcla entraba corriendo.
+  const velEntrante = (plan.velocidad || 1) * factorB();
   tempo = { velocidad: velEntrante, preservarTono: Boolean(estirarTiempo), origen: 'mezcla' };
   // Después del `src`, nunca antes: asignar la fuente relanza el algoritmo de
   // carga del elemento y eso devuelve `playbackRate` a 1. El ajuste de tempo se
@@ -614,6 +794,11 @@ export function mezclar(id, plan, { estirarTiempo = true } = {}) {
     tiras.a = { ...tiras.b };
     tiras.b = { ...NEUTRA };
     if (motor) motor.ajustarTira(saliente.nodos, NEUTRA);
+    // Y el fader también viaja: lo que se cuadró a mano ya está dentro del
+    // tempo del reproductor, así que el del plato B vuelve a cero y el de la
+    // cabina lee el de A, que es donde está ahora esa canción.
+    faderB = 0;
+    if (bucle?.cual === 'b') quitarBucle();
     activo = 1 - activo;
     state.currentId = id;
     avisadoFinal = false;

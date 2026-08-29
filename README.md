@@ -58,7 +58,7 @@ npm run dist:win     # y esto te deja el instalador en release\
 Y para lo demás:
 
 ```bash
-npm run verify       # lint + 363 pruebas + arranque real, arrastre, mezcla, cadena y rejilla
+npm run verify       # lint + 401 pruebas + arranque real, arrastre, mezcla, cadena, rejilla y cabina
 npm run dist:mac     # .dmg (arm64 + x64)  · hay que ejecutarlo EN un Mac
 npm run dist:linux   # AppImage + .deb
 ```
@@ -147,6 +147,11 @@ El mezclador tiene pantalla propia, estado propio y su propio criterio: no es un
 interruptor del reproductor, es una unidad que le toma prestados los dos platos.
 Y se parece a una cabina porque hace lo que hace una cabina.
 
+**El orden de la pantalla es el orden del trabajo:** se prepara, se escucha, se
+cuadra y se pincha. Arriba «qué pinchar después», en medio los dos platos y al
+final los mandos de la transición. Antes estaba justo al revés, con el paso uno
+al fondo de la pantalla.
+
 **Dos platos, uno encima de otro.** Arriba, lo que suena. Abajo, lo que
 preparas. Cada uno con dos vistas de su onda: la general —la canción entera,
 para ver la estructura y saltar por ella— y la ampliada, con la cabeza en el
@@ -175,9 +180,44 @@ ni un giro de perilla rompe una mezcla en curso; y la tira viaja con la canción
 cuando pasa a ser la que suena, como en una mesa. Una transición lanzada se puede
 cortar a mitad.
 
-**Y si el análisis no acierta, se pone a mano.** Cuatro golpecitos al ritmo de
-la canción —botón «Marcar tempo» o la tecla `T`— y ya tiene tempo; «El uno está
-aquí» coloca el compás donde de verdad empieza. Con eso, una canción a la que el
+**Un fader de tempo por plato.** Con recorrido de ±6, ±10 o ±16 %, en pasos de
+cinco centésimas, y doble clic para volver al centro. Es lo que faltaba para
+poder cuadrar a mano: el plato que preparabas estaba clavado a su tempo de
+archivo, o sea que sonaba distinto de como iba a entrar y la preescucha no
+servía para lo único que sirve una preescucha. «Igualar» pone el fader donde
+haga falta, a la vista, y si no llega lo dice en vez de estirar de más.
+
+**Cuatro puntos de referencia por canción.** Un pad vacío pone el punto donde
+está el plato, cuadrado al golpe más cercano; uno puesto lleva el plato hasta
+él; con Mayúsculas se borra. Con las teclas `1`–`4` en el plato que preparas, que
+es como se usa mientras se escucha. Se dibujan en las dos ondas y se guardan con
+la canción: no los toca ningún reanálisis.
+
+**Bucles cuadrados**, de uno a dieciséis compases, en los dos platos. Empiezan en
+el golpe más cercano y duran un número entero de compases, y el trozo que se
+repite se ve sombreado en la onda: un bucle que no se ve es un bucle que se
+olvida abierto. Y **saltos por tiempos** de 1, 4, 8, 16 o 32, que es como se busca
+la parte de una canción sin perder el compás.
+
+**Preescucha por otra salida.** Con dos salidas de sonido, por los auriculares
+suena el plato que elijas aunque no esté sonando en la sala, con su propio
+volumen y un mando de mezcla plato ↔ sala para poder cuadrar de oído. Si el
+equipo no tiene una segunda salida no se ofrece un mando muerto: se dice, y
+queda la preescucha de siempre.
+
+**La tonalidad en la rueda.** Junto al nombre va la casilla de Camelot —`8A`,
+`11B`— en los platos, en la cola y en la biblioteca. «Re menor» es correcto y no
+sirve a las tres de la mañana; `7A` sí, porque al lado están el `6A` y el `8A`.
+Las sugerencias además dicen POR QUÉ encaja: «relativa», «vecina», «sube la
+energía».
+
+**Y si el análisis no acierta, se pone a mano, en los dos platos.** Cuatro
+golpecitos al ritmo de la canción —botón «Marcar tempo» o la tecla `T`— y ya
+tiene tempo; «El uno está aquí» coloca el compás donde de verdad empieza;
+`±5 ms` empuja la rejilla entera cuando el tempo está bien y el uno está corrido,
+y `±0,01` afina el tempo en centésimas. Todo eso estaba solo en el plato que
+preparas, y el que suena es justo el que más falta hace corregir: es el que se
+está oyendo descuadrado. Con eso, una canción a la que el
 análisis no le encuentra pulso se puede pinchar igual: hay música con la que no
 acierta ningún detector, y quedarse fuera por eso no es una opción.
 
@@ -298,6 +338,14 @@ marcos por segundo— y viven en su propia carpeta, un archivo por canción: cie
 treinta kilobytes para cinco minutos, que se dibujan sin decodificar nada. Es
 regenerable: si se borra la carpeta, basta con volver a analizar.
 
+**Y si vienes de rekordbox, tu trabajo se trae.** *Archivo › Importar la
+colección de rekordbox…* lee el `collection.xml` y trae rejillas y puntos de
+referencia. Empareja por la ruta del archivo, por su nombre si la biblioteca se
+ha movido de equipo, y por título y artista si además cuadra la duración. Lo que
+entra queda marcado como puesto a mano —porque lo está—, así que ningún
+reanálisis lo pisa. Y el recuento dice también lo que **no** ha entrado: cuántas
+no encontró y cuántas tenían rejilla por tramos, que aquí no cabe.
+
 ## Datos
 
 Todo vive en la carpeta de datos del sistema (`Ayuda › Abrir la carpeta de datos`):
@@ -326,6 +374,9 @@ deja la aplicación como recién instalada; **la música no se toca nunca**.
 | [ · ] | en la cabina, un compás atrás · adelante en el plato B |
 | T | en la cabina, marcar el tempo a golpecitos |
 | B | en la cabina, preescuchar el plato B |
+| 1 · 2 · 3 · 4 | en la cabina, puntos de referencia del plato B |
+| L · Mayús+L | en la cabina, bucle en el plato B · en el A |
+| 0 | en la cabina, fader del plato B al centro |
 | / o `Cmd/Ctrl+F` | buscar |
 | `Cmd/Ctrl` + 1…6 | biblioteca, álbumes, artistas, favoritos, reciente, mezclador |
 | `Cmd/Ctrl+E` | ecualizador y mezcla |
@@ -364,7 +415,7 @@ y los empaqueta en `.ico` y `.icns`).
 
 ## Pruebas
 
-- `npm test` — 338 pruebas sobre la lógica pura (cola, orden y búsqueda,
+- `npm test` — 401 pruebas sobre la lógica pura (cola, orden y búsqueda,
   formato, `Range`), sobre el almacén y la biblioteca contra archivos de verdad
   en carpetas temporales —análisis incremental, ausencias, discos desconectados,
   correcciones de etiquetas, listas y M3U de ida y vuelta— y de contrato entre
@@ -406,8 +457,21 @@ y los empaqueta en `.ico` y `.icns`).
   tienen tinta de tres colores, que un plato vacío explica por qué lo está y que
   cada atajo de teclado llega a donde tiene que llegar —incluso con el foco en
   un deslizador, que era justo donde se perdían.
+- `npm run test:cabina` — las herramientas que separan una cabina de un
+  reproductor, cada una comprobada por lo que hace y no por lo que llama: que un
+  pad vacío pone el punto donde está el plato y cuadrado al golpe —medido en
+  milisegundos contra la rejilla—, que uno puesto devuelve el plato ahí, que el
+  punto sigue en la biblioteca después; que el bucle dura un compás exacto, que
+  el plato se queda dentro y **da la vuelta de verdad** —se mira el reloj
+  veintiséis veces seguidas—; que el fader estira el elemento de audio y que
+  «Igualar» deja los dos platos al mismo tempo; que el empujón de ±5 ms y el
+  afinado de una centésima mueven la rejilla del plato que SUENA; que el salto
+  de ocho tiempos son ocho tiempos y volver deja el plato donde estaba; y que
+  elegir un plato en los auriculares cambia la derivación en el grafo. Más el
+  orden de la pantalla y la casilla de la rueda en los dos platos, incluida la
+  línea que reescribe el bucle de pintado sesenta veces por segundo.
 
-En Linux sin escritorio, las cinco últimas usan `xvfb-run` automáticamente.
+En Linux sin escritorio, las seis últimas usan `xvfb-run` automáticamente.
 
 ## Límites conocidos
 

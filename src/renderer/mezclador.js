@@ -1,6 +1,7 @@
 import { LIMITE_AJUSTE, daTiempoAMezclar, describirPlan, planDeMezcla } from '../shared/mezcla.js';
 import {
-  analizada, anclarElUno, duracionDeCompases, rejillaVigente, siguienteCompas, tempoDeGolpes,
+  analizada, anclarElUno, duracionDeCompases, golpeMasCercano, rejillaVigente, siguienteCompas,
+  tempoDeGolpes,
 } from '../shared/beats.js';
 import { esReproducible, nombreDeFormato } from '../shared/audio-files.js';
 import { tonalidadesCompatibles } from '../shared/musica.js';
@@ -27,7 +28,22 @@ export const AJUSTES_POR_DEFECTO = {
   estilo: 'bombo',
   ajustarTempo: true,
   estirarTiempo: true,
+  /** Hasta dónde llega el fader de tempo, en tanto por ciento. */
+  rangoFader: 10,
+  /** Cuántos tiempos salta el botón de salto. */
+  salto: 4,
+  /** Cuántos compases dura el bucle que se abre con un clic. */
+  bucle: 4,
 };
+
+/** Los recorridos de fader de siempre: el de vinilo, el de CD y el largo. */
+export const RANGOS_FADER = [6, 10, 16];
+/** Tamaños de salto, en tiempos. Cuatro tiempos es un compás. */
+export const SALTOS = [1, 4, 8, 16, 32];
+/** Bucles, en compases. */
+export const BUCLES = [1, 2, 4, 8, 16];
+/** Puntos de referencia por canción. */
+export const CUES = 4;
 
 const oyentes = new Set();
 let enCurso = null;
@@ -227,7 +243,10 @@ export function prepararPlan(idEntrante = entranteElegida()) {
       rejilla: saliente.rejilla ?? { bpm: saliente.bpm, offset: 0, tiempoFuerte: 0, tiemposPorCompas: 4 },
     },
     entrante: {
-      bpm: entrante.bpm,
+      // El tempo al que YA suena el plato preparado, con su fader puesto: si se
+      // ha cuadrado a mano, el plan tiene que partir de ahí y no del tempo del
+      // archivo, o el ajuste se aplicaría dos veces.
+      bpm: entrante.bpm * (1 + player.faderDePlato('b') / 100),
       key: entrante.key,
       duracion: entrante.duracion,
       rejilla: entrante.rejilla ?? { bpm: entrante.bpm, offset: 0, tiempoFuerte: 0, tiemposPorCompas: 4 },
@@ -278,19 +297,187 @@ export function platoB() {
 }
 
 /**
- * Salta el plato B compases enteros. Con la rejilla puesta es exacto: no se
- * mueve «un poco», se mueve un compás.
+ * Cualquiera de los dos platos, con lo que hace falta para trabajar sobre él.
+ *
+ * Las herramientas de precisión eran todas del plato B, y eso obligaba a
+ * preparar una canción para poder corregirle la rejilla o ponerle un punto. La
+ * que suena es justo la que más falta hace corregir: es la que se está oyendo.
  */
-export function saltarCompasesEnB(compases) {
-  const actual = platoB();
+export function platoDe(cual) {
+  if (cual === 'b') return platoB();
+  if (!state.currentId) return null;
+  const ficha = fichaDeMezcla(state.currentId);
+  if (!ficha) return null;
+  const { tiempo } = player.platoActivo();
+  return {
+    id: state.currentId, tiempo, ficha, escuchando: state.playing, listo: true,
+  };
+}
+
+/**
+ * Deja el plato donde se le diga.
+ *
+ * `cuadrar` solo cuando se está MARCANDO un sitio —un punto de referencia, el
+ * principio de un bucle—, que es cuando «aquí» quiere decir «en el golpe». Un
+ * salto relativo no se cuadra: adelanta un número exacto de tiempos, así que si
+ * el plato estaba en la rejilla sigue estándolo, y si no, volver atrás lo deja
+ * exactamente donde estaba. Cuadrando, ir y volver no devolvía al mismo sitio.
+ */
+function llevar(cual, segundo, rejilla, { cuadrar = false } = {}) {
+  const destino = cuadrar ? golpeMasCercano(Math.max(0, segundo), rejilla) : Math.max(0, segundo);
+  const hecho = player.saltarEn(cual, destino);
+  if (hecho) avisar();
+  return hecho;
+}
+
+/**
+ * Salta compases enteros. Con la rejilla puesta es exacto: no se mueve «un
+ * poco», se mueve un compás.
+ */
+export function saltarCompasesEn(cual, compases) {
+  const actual = platoDe(cual);
   if (!actual?.ficha) return false;
   const rejilla = actual.ficha.rejilla;
   const compas = rejilla?.bpm
     ? duracionDeCompases(rejilla.bpm, 1, rejilla.tiemposPorCompas ?? 4)
     : 2;
-  const hecho = player.moverPreparado(Math.max(0, actual.tiempo + compas * compases));
-  if (hecho) avisar();
-  return hecho;
+  return llevar(cual, actual.tiempo + compas * compases, rejilla);
+}
+
+/** Y tiempos sueltos: el salto de cuatro, ocho o treinta y dos que se usa
+ * para buscar la parte de la canción sin perder el compás. */
+export function saltarTiemposEn(cual, tiempos) {
+  const actual = platoDe(cual);
+  if (!actual?.ficha) return false;
+  const rejilla = actual.ficha.rejilla;
+  const golpe = rejilla?.bpm ? 60 / rejilla.bpm : 0.5;
+  return llevar(cual, actual.tiempo + golpe * tiempos, rejilla);
+}
+
+export function saltarCompasesEnB(compases) {
+  return saltarCompasesEn('b', compases);
+}
+
+/* ------------------------------------------------ puntos de referencia */
+
+/** Los puntos de una canción, ordenados por su número. */
+export function cuesDe(id) {
+  const track = getTrack(id);
+  const lista = Array.isArray(track?.cues) ? track.cues : [];
+  return lista
+    .filter((c) => Number.isFinite(Number(c?.segundo)) && Number(c.n) >= 1 && Number(c.n) <= CUES)
+    .map((c) => ({ n: Math.round(Number(c.n)), segundo: Number(c.segundo), nombre: c.nombre || '' }))
+    .sort((a, b) => a.n - b.n);
+}
+
+/**
+ * Pone un punto de referencia donde está el plato.
+ *
+ * Cuadrado al golpe más cercano, que es lo que quiere decir quien lo pone: un
+ * punto quince milisegundos corrido no sirve para entrar, y a ojo sobre una
+ * onda no se afina más que eso.
+ */
+export async function ponerCue(cual, n) {
+  const actual = platoDe(cual);
+  if (!actual?.id) return { ok: false, motivo: 'No hay nada en ese plato.' };
+  const segundo = golpeMasCercano(actual.tiempo, actual.ficha?.rejilla);
+  const guardado = await window.pletina.track.cue(actual.id, { n, segundo });
+  const track = getTrack(actual.id);
+  if (track) track.cues = guardado?.cues ?? track.cues;
+  avisar();
+  return { ok: true, segundo };
+}
+
+/** Lleva el plato a uno de sus puntos. */
+export function irAlCue(cual, n) {
+  const actual = platoDe(cual);
+  if (!actual?.id) return false;
+  const punto = cuesDe(actual.id).find((c) => c.n === n);
+  if (!punto) return false;
+  return llevar(cual, punto.segundo, null);
+}
+
+/** Y lo borra, que es lo que hace falta cuando se pone donde no era. */
+export async function borrarCue(cual, n) {
+  const actual = platoDe(cual);
+  if (!actual?.id) return false;
+  const guardado = await window.pletina.track.cue(actual.id, { n, segundo: null });
+  const track = getTrack(actual.id);
+  if (track) track.cues = guardado?.cues ?? null;
+  avisar();
+  return true;
+}
+
+/* ------------------------------------------------------------------ bucles */
+
+/**
+ * Abre un bucle de tantos compases desde donde está el plato.
+ *
+ * Cuadrado a la rejilla por los dos lados: empieza en el golpe más cercano y
+ * dura un número entero de compases. Un bucle que no cuadra no es un bucle, es
+ * un tartamudeo.
+ */
+export function abrirBucle(cual, compases) {
+  const actual = platoDe(cual);
+  const rejilla = actual?.ficha?.rejilla;
+  if (!actual?.id) return { ok: false, motivo: 'No hay nada en ese plato.' };
+  if (!rejilla?.bpm) return { ok: false, motivo: 'Sin rejilla no hay compases que repetir.' };
+  const desde = golpeMasCercano(actual.tiempo, rejilla);
+  const largo = duracionDeCompases(rejilla.bpm, compases, rejilla.tiemposPorCompas ?? 4);
+  const puesto = player.ponerBucle(cual, desde, desde + largo, compases);
+  if (!puesto) return { ok: false, motivo: 'No he podido abrir el bucle.' };
+  avisar();
+  return { ok: true, bucle: puesto };
+}
+
+export function cerrarBucle() {
+  player.quitarBucle();
+  avisar();
+  return true;
+}
+
+export const bucleActual = () => player.bucleActual();
+
+/* ------------------------------------------------------- el fader de tempo */
+
+/** Mueve el fader de un plato, dentro del recorrido elegido. */
+export function moverFader(cual, porcentaje) {
+  const tope = state.mezclador.rangoFader || 10;
+  return player.ajustarFader(cual, Math.max(-tope, Math.min(tope, Number(porcentaje) || 0)));
+}
+
+/** Y lo devuelve al centro: el tempo del archivo, sin tocar. */
+export function faderAlCentro(cual) {
+  return player.ajustarFader(cual, 0);
+}
+
+/**
+ * Pone el fader del plato preparado donde haga falta para que su tempo sea el
+ * del que suena. Es «igualar el tempo», pero a la vista y antes de pinchar.
+ */
+export function igualarTempoEnB() {
+  const sonando = fichaDeMezcla(state.currentId);
+  const preparado = platoB();
+  if (!sonando?.bpm || !preparado?.ficha?.bpm) {
+    return { ok: false, motivo: 'Hacen falta las dos analizadas para igualar el tempo.' };
+  }
+  const objetivo = sonando.bpm * player.platoActivo().velocidad;
+  let razon = objetivo / preparado.ficha.bpm;
+  // A la octava más cercana: cuadrar un drum & bass con un hip-hop es
+  // multiplicar por dos, no estirar un cien por cien.
+  while (razon > 1.5) razon /= 2;
+  while (razon < 0.67) razon *= 2;
+  const porcentaje = (razon - 1) * 100;
+  const tope = state.mezclador.rangoFader || 10;
+  if (Math.abs(porcentaje) > tope) {
+    return {
+      ok: false,
+      motivo: `Harían falta ${porcentaje > 0 ? '+' : '−'}${Math.abs(porcentaje).toFixed(1)} % y el fader llega a ${tope}. Amplía el recorrido.`,
+    };
+  }
+  player.ajustarFader('b', porcentaje);
+  avisar();
+  return { ok: true, porcentaje };
 }
 
 /**
@@ -301,8 +488,8 @@ export function saltarCompasesEnB(compases) {
  * mezcla entra a contratiempo por muy afinado que esté el tempo. Esto lo
  * arregla mirando la onda, que es como se arregla en una cabina.
  */
-export async function ponerElUnoEnB() {
-  const actual = platoB();
+export async function ponerElUnoEn(cual = 'b') {
+  const actual = platoDe(cual);
   const rejilla = actual?.ficha?.rejilla;
   if (!rejilla?.bpm) return { ok: false, motivo: 'Esa canción no tiene rejilla que mover.' };
 
@@ -320,9 +507,56 @@ export async function ponerElUnoEnB() {
     };
   }
   // Y el plato se coloca en ese mismo uno, que es donde el usuario lo ha puesto.
-  player.moverPreparado(siguienteCompas(actual.tiempo - compas / 2, track?.rejilla ?? rejilla));
+  // En el que suena no: mover la canción que está sonando para «confirmar» algo
+  // es un salto en medio de la sala.
+  if (cual === 'b') {
+    player.moverPreparado(siguienteCompas(actual.tiempo - compas / 2, track?.rejilla ?? rejilla));
+  }
   avisar();
   return { ok: true };
+}
+
+export const ponerElUnoEnB = () => ponerElUnoEn('b');
+
+/**
+ * El empujón fino de la rejilla: unos milisegundos a un lado o a otro.
+ *
+ * Es lo que falta cuando el tempo está bien y el «uno» está corrido cinco
+ * milisegundos: se oye como un eco, y con el ratón sobre una onda no se afina
+ * tanto. Aquí no se mueve el plato, se mueve la rejilla.
+ */
+export async function empujarRejilla(cual, milisegundos) {
+  const actual = platoDe(cual);
+  const rejilla = actual?.ficha?.rejilla;
+  if (!rejilla?.bpm) return { ok: false, motivo: 'Esa canción no tiene rejilla que mover.' };
+  const guardada = await window.pletina.track.rejilla(actual.id, { empujon: milisegundos / 1000 });
+  const track = getTrack(actual.id);
+  if (track && guardada?.rejilla) track.rejilla = guardada.rejilla;
+  avisar();
+  return { ok: true, offset: guardada?.rejilla?.offset ?? rejilla.offset };
+}
+
+/**
+ * Afina el tempo en centésimas, sin volver a analizar.
+ *
+ * Medio punto de tempo son dos segundos de desfase al final de una canción, y
+ * el análisis puede quedarse a una centésima. Con esto se corrige oyendo, que
+ * es como se corrige de verdad.
+ */
+export async function afinarTempo(cual, delta) {
+  const actual = platoDe(cual);
+  const rejilla = actual?.ficha?.rejilla;
+  if (!rejilla?.bpm) return { ok: false, motivo: 'Esa canción no tiene rejilla que afinar.' };
+  const bpm = Math.round((rejilla.bpm + delta) * 100) / 100;
+  if (bpm < 20 || bpm > 400) return { ok: false, motivo: 'Ese ya no es un tempo que se pueda pinchar.' };
+  const guardada = await window.pletina.track.rejilla(actual.id, { bpm });
+  const track = getTrack(actual.id);
+  if (track && guardada?.rejilla) {
+    track.rejilla = guardada.rejilla;
+    track.bpm = guardada.bpm ?? track.bpm;
+  }
+  avisar();
+  return { ok: true, bpm };
 }
 
 /* --------------------------------------------------- marcar el tempo a mano */
@@ -342,9 +576,9 @@ export const golpesMarcados = () => golpes.length;
  * tempo, no el «uno»: el uno se pone con su botón, que sabe exactamente dónde
  * está el plato. Prometer las dos cosas de un golpecito sería mentir.
  */
-export async function marcarTempoEnB() {
-  const actual = platoB();
-  if (!actual) return { ok: false, motivo: 'No hay nada preparado en el plato B.' };
+export async function marcarTempoEn(cual = 'b') {
+  const actual = platoDe(cual);
+  if (!actual) return { ok: false, motivo: 'No hay nada en ese plato.' };
 
   const ahora = performance.now() / 1000;
   if (golpes.length && ahora - golpes[golpes.length - 1] > OLVIDO) golpes = [];
@@ -369,6 +603,8 @@ export async function marcarTempoEnB() {
   };
 }
 
+export const marcarTempoEnB = () => marcarTempoEn('b');
+
 /** Se olvida de los golpes: al soltar el plato o al cambiar de canción. */
 export function olvidarGolpes() {
   golpes = [];
@@ -387,8 +623,8 @@ export const marcandoTempo = () => golpes.length > 0
  * vuelve a analizar nada ni mueve un golpe de sitio: solo cambia la cuenta, con
  * la rejilla anclada en el «uno» que ya está puesto.
  */
-export async function cambiarOctavaEnB(factor) {
-  const actual = platoB();
+export async function cambiarOctavaEn(cual, factor) {
+  const actual = platoDe(cual);
   const rejilla = actual?.ficha?.rejilla;
   if (!rejilla?.bpm) return { ok: false, motivo: 'Esa canción no tiene rejilla que cambiar.' };
   const bpm = rejilla.bpm * factor;
@@ -405,6 +641,8 @@ export async function cambiarOctavaEnB(factor) {
   avisar();
   return { ok: true, bpm: guardada?.rejilla?.bpm ?? bpm };
 }
+
+export const cambiarOctavaEnB = (factor) => cambiarOctavaEn('b', factor);
 
 /** ¿Se puede mezclar ahora mismo? */
 export function puedeMezclar() {
@@ -475,7 +713,46 @@ export function estadoDeMezcla() {
     ajustes: state.mezclador,
     disponible: puedeMezclar(),
     platoB: platoB(),
+    bucle: player.bucleActual(),
+    cascos: player.estadoCascos(),
+    faders: { a: player.faderDePlato('a'), b: player.faderDePlato('b') },
   };
+}
+
+/* ------------------------------------------------------------------ cascos */
+
+/**
+ * Por dónde salen los auriculares.
+ *
+ * La lista de salidas la da el sistema y a veces sin nombre —hace falta permiso
+ * de micrófono para leer las etiquetas—, así que lo que no tiene nombre se
+ * numera en vez de salir en blanco.
+ */
+export async function salidasDeSonido() {
+  if (!navigator.mediaDevices?.enumerateDevices) return [];
+  try {
+    const todos = await navigator.mediaDevices.enumerateDevices();
+    return todos
+      .filter((d) => d.kind === 'audiooutput')
+      .map((d, i) => ({
+        id: d.deviceId,
+        nombre: d.label || (d.deviceId === 'default' ? 'La salida del sistema' : `Salida ${i + 1}`),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+export function ajustarCascos(cambio) {
+  const estado = player.ponerCascos(cambio);
+  avisar();
+  return estado;
+}
+
+export async function elegirSalidaDeCascos(id) {
+  const hecho = await player.elegirSalidaDeCascos(id);
+  avisar();
+  return hecho;
 }
 
 export function cambiarAjustes(cambio) {

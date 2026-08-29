@@ -10,7 +10,14 @@
  *
  *   plato A ─┐
  *            ├→ ganancia de plato → ecualizador → maestro → analizador → salida
- *   plato B ─┘
+ *   plato B ─┘         │
+ *                      └→ preescucha → salida de auriculares (si hay dos)
+ *
+ * La preescucha por otra salida es lo que separa una cabina de un reproductor:
+ * escuchar por los cascos lo que todavía no suena en la sala. El nodo que lo
+ * hace posible es `MediaStreamAudioDestinationNode`: un segundo destino del
+ * mismo grafo que sale por un `<audio>` propio, y a un `<audio>` sí se le puede
+ * decir por qué dispositivo suena (`setSinkId`). Al contexto no.
  */
 
 /** Diez bandas por octava, de subgraves a brillo. */
@@ -65,6 +72,36 @@ export function createEngine() {
   preamp.connect(maestro);
   maestro.connect(analizador);
   analizador.connect(contexto.destination);
+
+  // La cadena de cascos: la suma de las derivaciones de los platos más, si se
+  // pide, lo que suena en la sala. Un pinchadiscos quiere las dos cosas a la
+  // vez para poder cuadrar de oído; el mando de mezcla decide cuánto de cada.
+  const aCascos = contexto.createGain();
+  const salaEnCascos = contexto.createGain();
+  salaEnCascos.gain.value = 0;
+  const cascos = contexto.createGain();
+  aCascos.connect(cascos);
+  maestro.connect(salaEnCascos);
+  salaEnCascos.connect(cascos);
+
+  // El segundo destino solo se crea si el navegador lo tiene: sin él, la
+  // preescucha sigue siendo la de siempre —bajita, por la misma salida— y
+  // ningún control promete lo que no hay.
+  let destinoCascos = null;
+  let salidaCascos = null;
+  try {
+    if (typeof contexto.createMediaStreamDestination === 'function') {
+      destinoCascos = contexto.createMediaStreamDestination();
+      cascos.connect(destinoCascos);
+      salidaCascos = new Audio();
+      salidaCascos.srcObject = destinoCascos.stream;
+      salidaCascos.autoplay = true;
+      salidaCascos.volume = 1;
+    }
+  } catch {
+    destinoCascos = null;
+    salidaCascos = null;
+  }
 
   const fuentes = new WeakMap();
 
@@ -124,6 +161,12 @@ export function createEngine() {
 
     const trim = contexto.createGain();
 
+    // La derivación a los cascos. Sale ANTES de la ganancia de mezcla a
+    // propósito: lo que se preescucha es el plato, suene o no en la sala, y con
+    // la transición a medias su ganancia va camino de cero.
+    const cascos = contexto.createGain();
+    cascos.gain.value = 0;
+
     fuente.connect(grave);
     grave.connect(medio);
     medio.connect(agudo);
@@ -133,10 +176,12 @@ export function createEngine() {
     mAgudo.connect(filtro);
     filtro.connect(trim);
     trim.connect(ganancia);
+    trim.connect(cascos);
+    cascos.connect(aCascos);
     ganancia.connect(entradaEq);
 
     const plato = {
-      fuente, ganancia, grave, medio, agudo, mGrave, mMedio, mAgudo, filtro, trim,
+      fuente, ganancia, grave, medio, agudo, mGrave, mMedio, mAgudo, filtro, trim, cascos,
     };
     fuentes.set(elemento, plato);
     return plato;
@@ -203,13 +248,56 @@ export function createEngine() {
     }
   }
 
+  /**
+   * Cuánto de cada plato va a los cascos, de 0 a 1. `null` deja el plato como
+   * está, para poder tocar uno sin pisar el otro.
+   */
+  function ajustarCascos(plato, valor) {
+    if (!plato?.cascos) return;
+    const ahora = contexto.currentTime;
+    plato.cascos.gain.cancelScheduledValues(ahora);
+    plato.cascos.gain.setTargetAtTime(Math.max(0, Math.min(1, valor)), ahora, 0.01);
+  }
+
   return {
     contexto,
     analizador,
     conectar,
     limpiarPlato,
     ajustarTira,
+    ajustarCascos,
     despertar,
+    /** ¿Hay una salida de cascos de verdad, separada de la de la sala? */
+    get hayCascos() {
+      return Boolean(salidaCascos);
+    },
+    /**
+     * Manda los cascos a un dispositivo concreto. Sin `setSinkId` —o con un
+     * identificador que ya no existe— se dice que no, en vez de fingir que sí.
+     */
+    async salidaDeCascos(deviceId) {
+      if (!salidaCascos) return false;
+      if (typeof salidaCascos.setSinkId !== 'function') return false;
+      try {
+        await salidaCascos.setSinkId(deviceId || '');
+        await salidaCascos.play().catch(() => {});
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    /** Cuánto de la sala se oye por los cascos, para poder cuadrar de oído. */
+    mezclaDeCascos(valor) {
+      const ahora = contexto.currentTime;
+      salaEnCascos.gain.cancelScheduledValues(ahora);
+      salaEnCascos.gain.setTargetAtTime(Math.max(0, Math.min(1, valor)), ahora, 0.02);
+    },
+    /** Volumen de los cascos, aparte del de la sala. */
+    volumenDeCascos(valor) {
+      const ahora = contexto.currentTime;
+      cascos.gain.cancelScheduledValues(ahora);
+      cascos.gain.setTargetAtTime(Math.max(0, Math.min(1.5, valor)), ahora, 0.02);
+    },
     get tiempo() {
       return contexto.currentTime;
     },

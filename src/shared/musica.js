@@ -1,3 +1,5 @@
+import { pegan } from './camelot.js';
+
 /**
  * Tempo y tonalidad, a partir de las muestras de audio.
  *
@@ -222,22 +224,11 @@ export function detectarTonalidad(chroma) {
   };
 }
 
-/** Dos canciones pegan si sus tonalidades son vecinas en el círculo de quintas. */
-export function tonalidadesCompatibles(a, b) {
-  if (!a || !b) return false;
-  if (a === b) return true;
-  const indice = (cifrado) => {
-    const menor = cifrado.endsWith('m');
-    const nota = menor ? cifrado.slice(0, -1) : cifrado;
-    const i = NOTAS_CIFRADO.indexOf(nota);
-    return i === -1 ? null : { i, menor };
-  };
-  const uno = indice(a);
-  const dos = indice(b);
-  if (!uno || !dos) return false;
-  // Relativa mayor/menor: la menor está tres semitonos por debajo de su mayor,
-  // así que Do mayor y La menor son pareja (La = Do + 9).
-  if (uno.menor !== dos.menor) return ((uno.i - dos.i + 12) % 12 === (uno.menor ? 9 : 3));
-  const distancia = (uno.i - dos.i + 12) % 12;
-  return distancia === 0 || distancia === 5 || distancia === 7;
-}
+/**
+ * Dos canciones pegan si sus tonalidades son vecinas en el círculo de quintas.
+ *
+ * La cuenta está en `camelot.js`, que es la misma rueda mirada como la mira
+ * quien pincha: la misma casilla, la de al lado o la relativa. Antes vivía aquí
+ * con la aritmética a mano, y había dos sitios que sabían lo mismo.
+ */
+export const tonalidadesCompatibles = pegan;

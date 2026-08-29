@@ -723,6 +723,23 @@ export function anclarElUno(tiempo, { bpm, tiemposPorCompas = 4 } = {}) {
 }
 
 /** Instante del siguiente golpe a partir de un momento dado. */
+/**
+ * El golpe MÁS CERCANO a un instante, para arriba o para abajo.
+ *
+ * Es lo que hace falta al poner un punto de referencia o al abrir un bucle: uno
+ * para el plato donde le parece y lo que quiere decir es «aquí», no «en el
+ * siguiente golpe». Sin rejilla devuelve el instante tal cual, que es lo
+ * honesto: no hay a qué cuadrar.
+ */
+export function golpeMasCercano(segundo, rejilla) {
+  const bpm = Number(rejilla?.bpm) || 0;
+  if (!bpm || !Number.isFinite(segundo)) return segundo;
+  const periodo = 60 / bpm;
+  const offset = Number(rejilla.offset) || 0;
+  const k = Math.round((segundo - offset) / periodo);
+  return Math.max(0, Math.round((offset + k * periodo) * 1000) / 1000);
+}
+
 export function siguienteGolpe(segundo, { bpm, offset = 0 }) {
   if (!bpm) return segundo;
   const periodo = 60 / bpm;

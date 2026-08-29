@@ -193,9 +193,15 @@ export function pintarGeneral(canvas, ondas, {
 
   for (const marca of marcas) {
     if (!(marca.segundo >= 0) || marca.segundo > largo) continue;
-    lineaConHalo(ctx, Math.round(xDeSegundo(marca.segundo, vista)) + 0.5, 0, alto, {
+    const x = Math.round(xDeSegundo(marca.segundo, vista)) + 0.5;
+    lineaConHalo(ctx, x, 0, alto, {
       color: marca.color || paleta.senal, alfa: 1, grosor: 2, halo: paleta.fondo,
     });
+    if (marca.etiqueta && alto > 22) {
+      numeroConHalo(ctx, marca.etiqueta, x + 3, 2, {
+        color: marca.color || paleta.senal, halo: paleta.fondo,
+      });
+    }
   }
 
   // Lo ya escuchado, apagado.
@@ -215,7 +221,7 @@ export function pintarGeneral(canvas, ondas, {
  */
 export function pintarZoom(canvas, ondas, {
   centro = 0, segundos = 8, rejilla = null, marcas = [], apagado = false, sinGraves = false,
-  mensaje = '',
+  mensaje = '', zona = null,
 } = {}) {
   const { ctx, ancho, alto } = ajustarLienzo(canvas);
   const paleta = colores(canvas);
@@ -232,6 +238,17 @@ export function pintarZoom(canvas, ondas, {
       agudo: franja(ondas.agudo, opciones),
       // Con los graves fuera se pintan a media luz: lo que se ve es lo que se oye.
     }, { ancho, alto, paleta, apagada: sinGraves ? 'grave' : null });
+    ctx.globalAlpha = 1;
+  }
+
+  // El trozo que se está repitiendo, sombreado: un bucle que no se ve es un
+  // bucle que se olvida abierto.
+  if (zona && zona.hasta > zona.desde) {
+    const x = xDeSegundo(zona.desde, vista);
+    const w = Math.max(2, xDeSegundo(zona.hasta, vista) - x);
+    ctx.fillStyle = paleta.acento;
+    ctx.globalAlpha = 0.16;
+    ctx.fillRect(x, 0, w, alto);
     ctx.globalAlpha = 1;
   }
 
@@ -267,14 +284,18 @@ export function pintarZoom(canvas, ondas, {
     }
   }
 
+  // Los puntos de referencia, con el mismo halo que la rejilla: encima de una
+  // onda densa, una línea sin halo es una línea que no está.
   for (const marca of marcas) {
     const x = xDeSegundo(marca.segundo, vista);
     if (x < -4 || x > ancho + 4) continue;
-    ctx.fillStyle = marca.color || paleta.senal;
-    ctx.fillRect(Math.round(x) - 1, 0, 2, alto);
+    lineaConHalo(ctx, Math.round(x) + 0.5, 0, alto, {
+      color: marca.color || paleta.senal, alfa: 1, grosor: 2, halo: paleta.fondo,
+    });
     if (marca.etiqueta) {
-      ctx.font = '10px ui-monospace, monospace';
-      ctx.fillText(marca.etiqueta, Math.round(x) + 4, 11);
+      numeroConHalo(ctx, marca.etiqueta, Math.round(x) + 5, alto - 14, {
+        color: marca.color || paleta.senal, halo: paleta.fondo,
+      });
     }
   }
 

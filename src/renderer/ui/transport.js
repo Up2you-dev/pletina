@@ -176,6 +176,10 @@ export function helpPopover(anchor, info, popover) {
     ['Empujar el plato', ', .'],
     ['Un compás atrás / adelante', '[ ]'],
     ['Preescuchar el plato B', 'B'],
+    ['Marcar el tempo a golpecitos', 'T'],
+    ['Puntos de referencia del plato B', '1 2 3 4'],
+    ['Bucle en el plato B / en el A', 'L · Mayús + L'],
+    ['Fader del plato B al centro', '0'],
     ['Ir a las vistas', 'Ctrl + 1…6'],
     ['Ecualizador y mezcla', 'Ctrl + E'],
   ];

@@ -1,7 +1,7 @@
 {
   "name": "pletina",
   "productName": "Pletina",
-  "version": "5.1.0",
+  "version": "5.2.0",
   "private": true,
   "description": "Reproductor de música local de escritorio: tu biblioteca en tu disco, sin nube y sin cuentas",
   "author": {
@@ -27,7 +27,7 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "icons": "node build/make-icons.mjs",
-    "verify": "npm run lint && npm test && npm run smoke && npm run test:arrastre && npm run test:mezcla && npm run test:cadena && npm run test:rejilla",
+    "verify": "npm run lint && npm test && npm run smoke && npm run test:arrastre && npm run test:mezcla && npm run test:cadena && npm run test:rejilla && npm run test:cabina",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "dist:mac": "electron-builder --mac",
@@ -37,7 +37,8 @@
     "test:arrastre": "node scripts/prueba-arrastre.mjs",
     "test:mezcla": "node scripts/prueba-mezcla.mjs",
     "test:cadena": "node scripts/prueba-cadena.mjs",
-    "test:rejilla": "node scripts/prueba-rejilla.mjs"
+    "test:rejilla": "node scripts/prueba-rejilla.mjs",
+    "test:cabina": "node scripts/prueba-cabina.mjs"
   },
   "dependencies": {
     "music-metadata": "^11.15.0",

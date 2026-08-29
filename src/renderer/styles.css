@@ -352,18 +352,21 @@ select.sort:hover{border-color:var(--muted-2)}
 .vol{flex:none; width:92px}
 
 /* ---------- la cabina ---------- */
+/* El orden de la pantalla es el orden del trabajo: se prepara, se escucha, se
+   cuadra y se pincha. Por eso «qué pinchar después» va arriba —es el paso uno—
+   y la mesa de mezclas al final: antes estaba justo al revés. */
 .cabina{padding:4px 20px 24px; display:grid; gap:10px; max-width:1500px;
-  grid-template-areas:'a' 'entre' 'b' 'mesa' 'candidatos'}
+  grid-template-areas:'candidatos' 'a' 'entre' 'b' 'mesa'}
 .cabina .deck-a{grid-area:a}
 .cabina .entre-platos{grid-area:entre}
 .cabina .deck-b{grid-area:b}
 .cabina .mesa{grid-area:mesa}
 .cabina .candidatos{grid-area:candidatos}
 /* En pantalla ancha, la cabina se parte: a la izquierda los platos —que es
-   donde se mira para cuadrar— y a la derecha los mandos y lo que viene. */
+   donde se mira para cuadrar— y a la derecha los mandos de la transición. */
 @media (min-width:1120px){
   .cabina{grid-template-columns:minmax(0,1fr) 380px; align-items:start;
-    grid-template-areas:'a mesa' 'entre mesa' 'b mesa' 'candidatos candidatos'}
+    grid-template-areas:'candidatos candidatos' 'a mesa' 'entre mesa' 'b mesa'}
   .cabina .mesa{height:100%}
 }
 .deck{position:relative; display:grid; gap:6px; border:1px solid var(--line); border-radius:var(--r); background:var(--panel);
@@ -395,6 +398,40 @@ select.sort:hover{border-color:var(--muted-2)}
   text-transform:uppercase; color:var(--muted-2)}
 .tira .mando input{width:100%; accent-color:var(--accent); cursor:pointer}
 .tira .mando input:disabled{opacity:.35; cursor:default}
+
+/* Los mandos del plato: la tira de canal y el fader de tempo, en línea. */
+.mandos-plato{display:grid; grid-template-columns:minmax(0,3fr) minmax(150px,1fr); gap:14px; align-items:end}
+.fader{display:grid; grid-template-columns:1fr auto; gap:2px 8px; align-items:center}
+.fader .etiqueta{grid-column:1 / -1}
+.fader input{width:100%; accent-color:var(--signal); cursor:pointer}
+.fader input:disabled{opacity:.35; cursor:default}
+.fader output{font-family:var(--ff-mono); font-size:11.5px; color:var(--muted); min-width:58px; text-align:right}
+.fader .chip{grid-column:1 / -1; justify-self:start}
+
+/* Los pads: cuatro puntos por canción, con su instante debajo. */
+.pads{display:flex; align-items:center; gap:6px; flex-wrap:wrap}
+.pads .etiqueta{margin-right:2px}
+.pad{display:flex; flex-direction:column; align-items:center; gap:0; min-width:56px; padding:3px 8px;
+  border:1px solid var(--line); border-radius:var(--r-sm); background:var(--panel-2); color:var(--muted);
+  font:inherit; cursor:pointer}
+.pad b{font-family:var(--ff-display); font-size:12px; font-weight:700; letter-spacing:.06em}
+.pad i{font-style:normal; font-family:var(--ff-mono); font-size:9.5px; color:var(--muted-2)}
+.pad:hover:not(:disabled){border-color:var(--accent)}
+.pad.puesto{border-color:var(--signal); background:var(--signal-soft); color:var(--signal)}
+.pad.puesto i{color:var(--signal)}
+.pad:disabled{opacity:.4; cursor:default}
+
+/* Bucles, saltos y rejilla: una fila de fichas cada uno. */
+.fila-herramientas{display:flex; align-items:center; gap:6px; flex-wrap:wrap}
+.fila-herramientas .etiqueta{margin-right:2px}
+.fila-herramientas .salto-etiqueta{margin-left:10px}
+.mando.ancho{display:grid; gap:3px}
+.mando.ancho span{font-family:var(--ff-display); font-size:9px; font-weight:600; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--muted-2)}
+.mando.ancho input{width:100%; accent-color:var(--accent); cursor:pointer}
+.cascos{gap:8px}
+.salida-cascos{font:inherit; font-size:12px; padding:3px 8px; border-radius:99px; border:1px solid var(--line);
+  background:var(--panel-2); color:var(--text); max-width:190px}
 
 .onda{display:block; width:100%; border-radius:var(--r-sm); background:var(--onda-fondo); cursor:pointer}
 .onda.general{height:34px}
@@ -436,7 +473,7 @@ select.sort:hover{border-color:var(--muted-2)}
 .candidatos-cab .etiqueta{white-space:nowrap}
 .candidatos-cab .hint{flex:1 1 220px; min-width:0}
 .candidatos-lista{display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:8px;
-  max-height:240px; overflow:auto; align-content:start}
+  max-height:164px; overflow:auto; align-content:start}
 .candidato{display:flex; align-items:center; gap:10px; text-align:left; padding:8px 10px; min-width:0;
   border:1px solid var(--line); border-radius:var(--r-sm); background:var(--panel); color:inherit; cursor:pointer; font:inherit}
 .candidato:hover{border-color:var(--accent); background:var(--accent-soft)}
@@ -467,6 +504,7 @@ select.sort:hover{border-color:var(--muted-2)}
 @media (max-width:900px){
   .candidatos-lista{grid-template-columns:1fr}
   .deck-datos{display:none}
+  .mandos-plato{grid-template-columns:1fr}
 }
 
 /* ---------- visualizador ---------- */

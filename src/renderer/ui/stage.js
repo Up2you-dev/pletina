@@ -1,6 +1,7 @@
 import { $, $$, coverHtml, esc, gradientFor, popover } from './dom.js';
 import { ICO } from './icons.js';
 import { analizada } from '../../shared/beats.js';
+import { camelot } from '../../shared/camelot.js';
 import {
   formatTempo, formatTime, formatTotal, formatWhen, plural,
 } from '../../shared/format.js';
@@ -57,7 +58,9 @@ function secondaryLabel() {
  */
 function musicaDe(track) {
   const bpm = formatTempo(track.bpm);
-  const tono = track.key || '';
+  // La casilla de la rueda cuando se puede sacar: «7A» dice con qué pega y
+  // «Re menor» no, y en una lista de mil canciones eso es toda la diferencia.
+  const tono = camelot(track.key) || track.key || '';
   if (!bpm && !tono) return '<i class="sin">—</i>';
   return `${bpm ? `<b>${esc(bpm)}</b>` : ''}${bpm && tono ? '<i class="sep">·</i>' : ''}${tono ? esc(tono) : ''}`;
 }
@@ -502,6 +505,37 @@ export function bindStage(handlers) {
     const nivel = event.target.closest('[data-zoom]');
     if (nivel) return actions.mezclador('zoom', nivel.dataset.zoom);
 
+    // Los mandos de la cabina que llevan plato: cada uno dice sobre cuál actúa,
+    // que es lo que permite que las mismas herramientas valgan para los dos.
+    const pad = event.target.closest('[data-cue][data-n]');
+    // Con Mayúsculas se borra: es la mitad de las veces y sin ello haría falta
+    // un menú contextual para algo que se hace con el dedo puesto.
+    if (pad) return actions.cue(pad.dataset.cue, Number(pad.dataset.n), event.shiftKey);
+
+    const bucle = event.target.closest('[data-bucle]');
+    if (bucle) return actions.bucle(bucle.dataset.bucle, Number(bucle.dataset.valor));
+
+    const tamano = event.target.closest('[data-tamano-salto]');
+    if (tamano) return actions.mezclador('tamano-salto', tamano.dataset.tamanoSalto);
+
+    const salto = event.target.closest('[data-salto]');
+    if (salto) return actions.salto(salto.dataset.salto, Number(salto.dataset.valor));
+
+    const empujon = event.target.closest('[data-empujon]');
+    if (empujon) return actions.empujonRejilla(empujon.dataset.empujon, Number(empujon.dataset.valor));
+
+    const afinar = event.target.closest('[data-afinar]');
+    if (afinar) return actions.afinarTempo(afinar.dataset.afinar, Number(afinar.dataset.valor));
+
+    const octava = event.target.closest('[data-octava]');
+    if (octava) return actions.octava(octava.dataset.octava, Number(octava.dataset.valor));
+
+    const marcar = event.target.closest('[data-marcar]');
+    if (marcar) return actions.marcarTempo(marcar.dataset.marcar);
+
+    const cascos = event.target.closest('button[data-cascos]');
+    if (cascos) return actions.cascos(cascos.dataset.cascos, cascos.dataset.valor);
+
     const mezcla = event.target.closest('[data-mezcla]');
     if (mezcla) {
       // Una casilla se atiende abajo, en `change`, que es quien sabe si ha
@@ -552,10 +586,26 @@ export function bindStage(handlers) {
   body.addEventListener('input', (event) => {
     const mando = event.target.closest('[data-tira][data-mando]');
     if (mando) actions.tira(mando.dataset.tira, mando.dataset.mando, Number(mando.value));
+    const fader = event.target.closest('input[data-fader]');
+    if (fader) actions.fader(fader.dataset.fader, Number(fader.value));
+    const cascos = event.target.closest('input[data-cascos]');
+    if (cascos) actions.cascos(cascos.dataset.cascos, Number(cascos.value));
+  });
+
+  body.addEventListener('change', (event) => {
+    const salida = event.target.closest('select[data-cascos="salida"]');
+    if (salida) actions.cascos('salida', salida.value);
   });
 
   // Doble clic: la banda se mata y se devuelve, como en cualquier mesa.
   body.addEventListener('dblclick', (event) => {
+    // Y el fader de tempo vuelve al centro, que es el gesto de siempre.
+    const fader = event.target.closest('input[data-fader]');
+    if (fader) {
+      fader.value = '0';
+      actions.fader(fader.dataset.fader, 0);
+      return;
+    }
     const mando = event.target.closest('[data-tira][data-mando]');
     if (!mando) return;
     const clave = mando.dataset.mando;

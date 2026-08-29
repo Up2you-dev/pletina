@@ -43,7 +43,19 @@ export const state = {
   crossfade: 0,
   visualizador: false,
   escribirEtiquetas: false,
-  mezclador: { auto: false, compases: 8, estilo: 'bombo', ajustarTempo: true, estirarTiempo: true },
+  mezclador: {
+    auto: false,
+    compases: 8,
+    estilo: 'bombo',
+    ajustarTempo: true,
+    estirarTiempo: true,
+    // Los mandos de cabina: recorrido del fader de tempo, tamaño del salto,
+    // compases del bucle y por dónde salen los auriculares.
+    rangoFader: 10,
+    salto: 4,
+    bucle: 4,
+    salidaCascos: '',
+  },
 
   queueOpen: false,
   selection: new Set(),

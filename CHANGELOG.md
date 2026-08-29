@@ -4,6 +4,87 @@ Las versiones siguen [SemVer](https://semver.org/lang/es/). Cada una se
 construye desde la pestaña *Actions* del repositorio; una etiqueta `v1.2.3`
 además publica los instaladores sueltos en la página de versiones.
 
+## 5.2.0 — 2026-08-29
+
+Lo que la auditoría pedía y faltaba, entero. Siete herramientas que no son
+adornos: son las que separan «un reproductor con un mezclador» de una cabina.
+
+### Poder cuadrar a mano
+
+- **Un fader de tempo por plato**, con recorrido de ±6, ±10 o ±16 % en pasos de
+  cinco centésimas y doble clic para volver al centro. Era la carencia de fondo:
+  el plato que preparabas estaba **clavado a ×1**, o sea que sonaba distinto de
+  como iba a entrar y la preescucha no servía para lo único que sirve una
+  preescucha. «Igualar» pone el fader donde haga falta, a la vista, y si el
+  recorrido no llega lo dice en vez de estirar de más.
+- Y cuenta para la mezcla: el plan parte del tempo al que YA suena el plato B,
+  así que cuadrar a mano y luego pulsar «igualar el tempo» no aplica el ajuste
+  dos veces.
+
+### Poder moverse por la canción
+
+- **Cuatro puntos de referencia por canción.** Pad vacío: pone el punto donde
+  está el plato, cuadrado al golpe más cercano. Pad puesto: lleva el plato ahí.
+  Con Mayúsculas se borra. Teclas `1`–`4` en el plato que preparas, que es como
+  se usa mientras se escucha. Se dibujan en las dos ondas, se guardan con la
+  canción y **no los toca ningún reanálisis**.
+- **Bucles cuadrados** de uno a dieciséis compases, en los dos platos, con el
+  trozo que se repite sombreado en la onda. Empiezan en el golpe más cercano y
+  duran un número entero de compases; la vuelta conserva la fase, así que el
+  bucle no se va arrastrando una miga por vuelta.
+- **Saltos por tiempos** de 1, 4, 8, 16 o 32. Sin cuadrar a propósito: adelantan
+  un número exacto de tiempos, así que volver atrás deja el plato exactamente
+  donde estaba.
+
+### Poder oír antes de pinchar
+
+- **Preescucha por otra salida.** Con dos salidas de sonido, por los auriculares
+  suena el plato que elijas aunque no esté sonando en la sala, con su propio
+  volumen y un mando de mezcla plato ↔ sala para cuadrar de oído. La derivación
+  sale ANTES de la ganancia de mezcla: se preescucha el plato, no lo que queda
+  de él a mitad de una transición. Sin segunda salida no se ofrece un mando
+  muerto: se dice, y queda la preescucha de siempre.
+
+### Poder decidir
+
+- **La tonalidad en la rueda de Camelot** —`8A`, `11B`— junto al nombre, en los
+  platos, en la cola y en la biblioteca. «Re menor» es correcto y no sirve a las
+  tres de la mañana. Las sugerencias además dicen por qué encaja: «relativa»,
+  «vecina», «sube la energía».
+- **El orden de la pantalla es el orden del trabajo:** preparar, escuchar,
+  cuadrar, pinchar. «Qué pinchar después» sube arriba del todo; estaba al fondo,
+  detrás de los mandos de la transición, o sea el paso uno al final.
+
+### Poder corregir
+
+- **Las herramientas de rejilla, en los dos platos.** Estaban solo en el que
+  preparas, y el que suena es justo el que más falta hace corregir: es el que se
+  está oyendo descuadrado.
+- **Empujón de ±5 ms**, para cuando el tempo está bien y el «uno» está corrido:
+  se oye como un eco y con el ratón sobre una onda no se afina tanto.
+- **Afinado de ±0,01 bpm**, porque media décima son dos segundos de desfase al
+  final de una canción.
+
+### Traer el trabajo hecho
+
+- **Importar la colección de rekordbox** (*Archivo › Importar la colección de
+  rekordbox…*): rejillas y puntos de referencia. Empareja por la ruta, por el
+  nombre del archivo si la biblioteca cambió de equipo, y por título y artista
+  si además cuadra la duración. Lo que entra queda marcado como puesto a mano
+  —porque lo está— y ningún reanálisis lo pisa. El recuento dice también lo que
+  NO ha entrado: cuántas no encontró y cuántas traían rejilla por tramos.
+
+### Pruebas
+
+- Sexta suite sobre la aplicación real: `npm run test:cabina`. Comprueba cada
+  herramienta por lo que HACE —que el bucle da la vuelta de verdad, medido
+  veintiséis veces seguidas; que el fader cambia la velocidad del elemento de
+  audio; que el punto sigue en la biblioteca después—, no por lo que llama.
+- 401 pruebas unitarias. Dos fallos reales cazados escribiéndolas: borrar un
+  punto lo dejaba puesto en el segundo cero, y una marca de rekordbox sin
+  instante colaba también como el segundo cero. Las dos, la misma trampa:
+  `Number(null)` es cero y `null >= 0` es cierto.
+
 ## 5.1.0 — 2026-08-29
 
 La auditoría de la 5.0.0 dejó un hallazgo pendiente y era el bueno: **las

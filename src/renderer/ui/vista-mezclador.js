@@ -1,10 +1,12 @@
 import { coverHtml, esc } from './dom.js';
 import { ICO } from './icons.js';
 import { ESTILOS } from '../../shared/mezcla.js';
+import { camelot, relacionArmonica } from '../../shared/camelot.js';
 import { formatPorcentaje, formatTime } from '../../shared/format.js';
 import { desfaseEntre } from '../../shared/onda-vista.js';
 import {
-  candidatos, estadoDeMezcla, fichaDeMezcla, pendientesDeAnalizar, prepararPlan,
+  BUCLES, CUES, RANGOS_FADER, SALTOS, candidatos, cuesDe, estadoDeMezcla, fichaDeMezcla,
+  pendientesDeAnalizar, prepararPlan,
 } from '../mezclador.js';
 import { estadoDePlatos, estadoPreparado, estadoTira, platoActivo } from '../player.js';
 import { ondaCargada, pedirOnda } from '../ondas.js';
@@ -26,6 +28,8 @@ import { pintarGeneral, pintarZoom, segundoEnLaGeneral } from './onda.js';
  */
 
 const COMPASES = [4, 8, 16, 32];
+/** Los nombres de los pads, que es como se llaman en cualquier cabina. */
+const NOMBRES_CUE = ['A', 'B', 'C', 'D'];
 /** Segundos de canción que se ven en la vista ampliada. */
 export const ZOOMS = [4, 8, 16];
 
@@ -69,10 +73,22 @@ function fiabilidad(rejilla, ficha) {
   return '';
 }
 
+/**
+ * La tonalidad como se lee en una cabina: la casilla de la rueda primero.
+ *
+ * «Re menor» es correcto y no sirve a las tres de la mañana; «7A» sí, porque
+ * al lado está el 6A y el 8A y con eso ya se sabe qué se puede pinchar.
+ */
+function tonoDe(ficha) {
+  const rueda = camelot(ficha?.key);
+  if (!rueda) return ficha?.tonalidad || ficha?.key || 'sin tonalidad';
+  return `${rueda} · ${ficha.tonalidad || ficha.key}`;
+}
+
 function datosDe(ficha, extra = []) {
   return [
     ficha.bpm ? `${conComa(ficha.bpm)} bpm` : 'sin tempo',
-    ficha.tonalidad || ficha.key || 'sin tonalidad',
+    tonoDe(ficha),
     ficha.rejilla?.porBombo ? 'rejilla por bombo' : '',
     fiabilidad(ficha.rejilla, ficha),
     ...extra,
@@ -113,9 +129,15 @@ function encajeHtml(c) {
   // El porcentaje que se enseña es lo que habría que estirar ESA canción.
   const estiron = Math.round((1 / (1 - c.ajuste) - 1) * 1000) / 10;
   if (!c.cuadra) return `<i class="ojo">no cuadra · ${esc(formatPorcentaje(estiron))}</i>`;
-  return `${c.armonica ? '<i class="pega">encaja de tono</i>' : ''}<i>${
+  // Y por qué encaja de tono, no solo que encaja: «relativa» y «vecina» son lo
+  // que decide entre dos candidatas que las dos pegan.
+  const relacion = c.armonica ? relacionArmonica(sonandoKey(), c.key) : null;
+  return `${relacion ? `<i class="pega">${esc(relacion.etiqueta)}</i>` : ''}<i>${
     esc(c.ajuste < 0.001 ? 'mismo tempo' : formatPorcentaje(estiron))}</i>`;
 }
+
+/** La tonalidad de lo que suena, que es contra lo que se compara todo. */
+const sonandoKey = () => fichaDeMezcla(state.currentId)?.key ?? '';
 
 /**
  * La tira de canal de un plato: lo que en una mesa son cuatro mandos.
@@ -143,6 +165,112 @@ function tiraHtml(cual, hay) {
   </div>`;
 }
 
+/**
+ * Los cuatro pads de una canción.
+ *
+ * Un pad vacío pone el punto donde está el plato; uno puesto lleva el plato
+ * hasta él. Con Mayúsculas se borra, que es lo que hace falta la mitad de las
+ * veces y sin ello obligaría a un menú.
+ */
+function padsHtml(cual, ficha) {
+  const puestos = ficha?.id ? cuesDe(ficha.id) : [];
+  const hay = Boolean(ficha?.id);
+  const botones = Array.from({ length: CUES }, (unused, i) => {
+    const n = i + 1;
+    const punto = puestos.find((c) => c.n === n);
+    const titulo = punto
+      ? `Ir al punto ${NOMBRES_CUE[i]} · ${formatTime(punto.segundo)} · Mayús para borrarlo`
+      : `Poner el punto ${NOMBRES_CUE[i]} donde está el plato`;
+    return `<button class="pad${punto ? ' puesto' : ''}" data-cue="${cual}" data-n="${n}"
+      ${hay ? '' : 'disabled'} title="${esc(titulo)}">
+      <b>${NOMBRES_CUE[i]}</b><i>${punto ? esc(formatTime(punto.segundo)) : '—'}</i>
+    </button>`;
+  }).join('');
+  return `<div class="pads" data-pads="${cual}">
+    <span class="etiqueta">Puntos</span>${botones}
+  </div>`;
+}
+
+/**
+ * Bucles y saltos: repetir un trozo y moverse por la canción sin perder el uno.
+ *
+ * Los dos cuadran a la rejilla, que es lo que los diferencia de adelantar diez
+ * segundos: un bucle que no cae en el compás no es un bucle, es un tropiezo.
+ */
+function bucleHtml(cual, ficha, bucle, ajustes) {
+  const hay = Boolean(ficha?.rejilla?.bpm);
+  const mio = bucle?.cual === cual;
+  return `<div class="fila-herramientas">
+    <span class="etiqueta">Bucle</span>
+    ${BUCLES.map((c) => `<button class="chip${mio && bucle.compases === c ? ' on' : ''}"
+      data-bucle="${cual}" data-valor="${c}"${hay ? '' : ' disabled'}
+      title="Repetir ${c} ${c === 1 ? 'compás' : 'compases'} desde aquí">${c}</button>`).join('')}
+    <button class="chip${mio ? ' on' : ''}" data-bucle="${cual}" data-valor="0"${mio ? '' : ' disabled'}
+      title="Salir del bucle en el siguiente golpe">Salir</button>
+    <span class="etiqueta salto-etiqueta">Salto</span>
+    <button class="chip" data-salto="${cual}" data-valor="-1"${hay ? '' : ' disabled'}
+      title="Atrás ${ajustes.salto} tiempos">◀</button>
+    ${SALTOS.map((t) => `<button class="chip${ajustes.salto === t ? ' on' : ''}"
+      data-tamano-salto="${t}" title="Saltar de ${t} en ${t} tiempos">${t}</button>`).join('')}
+    <button class="chip" data-salto="${cual}" data-valor="1"${hay ? '' : ' disabled'}
+      title="Adelante ${ajustes.salto} tiempos">▶</button>
+  </div>`;
+}
+
+/**
+ * Las herramientas de rejilla, ahora en los dos platos.
+ *
+ * Estaban solo en el que preparas, y el que suena es justo el que más falta
+ * hace corregir: es el que se está oyendo descuadrado.
+ */
+function rejillaHtml(cual, ficha) {
+  const hay = Boolean(ficha?.id);
+  const conRejilla = Boolean(ficha?.rejilla?.bpm);
+  return `<div class="fila-herramientas">
+    <span class="etiqueta">Rejilla</span>
+    <button class="chip" data-mezcla="poner-uno" data-valor="${cual}"${hay ? '' : ' disabled'}
+      title="Mover el «uno» de la rejilla a donde está el plato">El uno está aquí</button>
+    <button class="chip" data-empujon="${cual}" data-valor="-5"${conRejilla ? '' : ' disabled'}
+      title="Mover la rejilla cinco milisegundos hacia atrás">−5 ms</button>
+    <button class="chip" data-empujon="${cual}" data-valor="5"${conRejilla ? '' : ' disabled'}
+      title="Mover la rejilla cinco milisegundos hacia delante">+5 ms</button>
+    <button class="chip" data-afinar="${cual}" data-valor="-0.01"${conRejilla ? '' : ' disabled'}
+      title="Bajar el tempo una centésima">−0,01</button>
+    <button class="chip" data-afinar="${cual}" data-valor="0.01"${conRejilla ? '' : ' disabled'}
+      title="Subir el tempo una centésima">+0,01</button>
+    <button class="chip" data-octava="${cual}" data-valor="2"${conRejilla ? '' : ' disabled'}
+      title="Contar el tempo al doble, sin mover un golpe de sitio">×2</button>
+    <button class="chip" data-octava="${cual}" data-valor="0.5"${conRejilla ? '' : ' disabled'}
+      title="Contar el tempo a la mitad, sin mover un golpe de sitio">÷2</button>
+    <button class="chip" data-marcar="${cual}"${hay ? '' : ' disabled'}
+      title="Dar golpecitos al ritmo de la canción para ponerle el tempo a mano">Marcar tempo</button>
+  </div>`;
+}
+
+/**
+ * El fader de tempo, que es lo que faltaba para poder cuadrar a mano.
+ *
+ * El plato preparado estaba clavado a su tempo de archivo: sonaba distinto de
+ * como iba a entrar, así que la preescucha no servía para lo único que sirve
+ * una preescucha. Ahora tiene el mando de siempre, con su recorrido y su vuelta
+ * al centro con un doble clic.
+ */
+function faderHtml(cual, hay, faders, ajustes) {
+  const valor = faders?.[cual] ?? 0;
+  const tope = ajustes.rangoFader || 10;
+  const signo = valor > 0 ? '+' : valor < 0 ? '−' : '';
+  return `<div class="fader" data-fader-de="${cual}">
+    <span class="etiqueta">Tempo</span>
+    <input type="range" data-fader="${cual}" min="${-tope}" max="${tope}" step="0.05"
+      value="${Math.max(-tope, Math.min(tope, valor))}"${hay ? '' : ' disabled'}
+      aria-label="Fader de tempo del plato ${cual.toUpperCase()}"
+      title="Estirar o encoger este plato · doble clic para volver al tempo del archivo">
+    <output data-fader-lee="${cual}">${signo}${conComa(Math.abs(valor), 2)} %</output>
+    ${cual === 'b' ? `<button class="chip" data-mezcla="igualar-b"${hay ? '' : ' disabled'}
+      title="Poner el fader donde haga falta para que suene al tempo del plato A">Igualar</button>` : ''}
+  </div>`;
+}
+
 function candidatoHtml(c) {
   return `<button class="candidato${c.cuadra ? '' : ' floja'}" data-cargar="${esc(c.id)}"
     draggable="true" data-id="${esc(c.id)}" title="Cargar en el plato B">
@@ -151,7 +279,7 @@ function candidatoHtml(c) {
       <strong>${esc(c.titulo)}</strong>
       <span>${esc(c.artista)}</span>
     </span>
-    <span class="candidato-datos">${c.bpm ? `${esc(conComa(c.bpm))} bpm` : 'sin tempo'} · ${esc(c.tonalidad || c.key || '—')}</span>
+    <span class="candidato-datos">${c.bpm ? `${esc(conComa(c.bpm))} bpm` : 'sin tempo'} · ${esc(camelot(c.key) || c.tonalidad || c.key || '—')}</span>
     <span class="candidato-encaje">${encajeHtml(c)}</span>
   </button>`;
 }
@@ -181,7 +309,7 @@ function porQueNoHay() {
 
 export function pintarMezclador() {
   const {
-    enCurso, ajustes, disponible, platoB,
+    enCurso, ajustes, disponible, platoB, bucle, faders, cascos,
   } = estadoDeMezcla();
   const preparado = enCurso ?? prepararPlan();
   const saliente = fichaDelPlato('a');
@@ -192,11 +320,19 @@ export function pintarMezclador() {
   const pendientes = pendientesDeAnalizar();
 
   return `<div class="cabina">
+    ${candidatosHtml(lista, pendientes)}
+
     <section class="deck deck-a">
       ${cabeceraDeck(saliente, 'A · suena')}
       <canvas class="onda general" data-onda="general-a"></canvas>
       <canvas class="onda zoom" data-onda="zoom-a"></canvas>
-      ${tiraHtml('a', Boolean(saliente))}
+      ${padsHtml('a', saliente)}
+      ${bucleHtml('a', saliente, bucle, ajustes)}
+      ${rejillaHtml('a', saliente)}
+      <div class="mandos-plato">
+        ${tiraHtml('a', Boolean(saliente))}
+        ${faderHtml('a', Boolean(saliente), faders, ajustes)}
+      </div>
     </section>
 
     <div class="entre-platos">
@@ -211,7 +347,13 @@ export function pintarMezclador() {
       <canvas class="onda zoom" data-onda="zoom-b"></canvas>
       <canvas class="onda general" data-onda="general-b"></canvas>
       ${cabeceraDeck(entrante, 'B · preparas')}
-      ${tiraHtml('b', Boolean(platoB))}
+      ${padsHtml('b', entrante)}
+      ${bucleHtml('b', entrante, bucle, ajustes)}
+      ${rejillaHtml('b', entrante)}
+      <div class="mandos-plato">
+        ${tiraHtml('b', Boolean(platoB))}
+        ${faderHtml('b', Boolean(platoB), faders, ajustes)}
+      </div>
       <div class="deck-botones">
         <button class="btn pequeno${platoB?.escuchando ? ' on' : ''}" data-mezcla="preescuchar"
           ${platoB ? '' : 'disabled'} aria-pressed="${Boolean(platoB?.escuchando)}"
@@ -221,14 +363,6 @@ export function pintarMezclador() {
           title="Un compás atrás">${ICO.prev}Compás</button>
         <button class="btn pequeno" data-mezcla="compas-adelante"${platoB ? '' : ' disabled'}
           title="Un compás adelante">Compás${ICO.next}</button>
-        <button class="btn pequeno" data-mezcla="poner-uno"${platoB ? '' : ' disabled'}
-          title="Mover el «uno» de la rejilla a donde está el plato">${ICO.check}El uno está aquí</button>
-        <button class="btn pequeno" data-mezcla="marcar-tempo"${platoB ? '' : ' disabled'}
-          title="Dar golpecitos al ritmo de la canción para ponerle el tempo a mano">${ICO.waves}Marcar tempo</button>
-        <button class="btn pequeno" data-mezcla="octava" data-valor="2"${platoB?.ficha?.rejilla ? '' : ' disabled'}
-          title="Contar el tempo al doble, sin mover un golpe de sitio">×2</button>
-        <button class="btn pequeno" data-mezcla="octava" data-valor="0.5"${platoB?.ficha?.rejilla ? '' : ' disabled'}
-          title="Contar el tempo a la mitad, sin mover un golpe de sitio">÷2</button>
         <button class="btn btn-ghost pequeno" data-mezcla="soltar-b"${platoB ? '' : ' disabled'}>
           ${ICO.x}Quitar</button>
       </div>
@@ -288,23 +422,88 @@ export function pintarMezclador() {
           <span>Encadenar sola</span>
         </label>
       </div>
+
+      <div class="grupo">
+        <span class="etiqueta">Recorrido del fader</span>
+        <div class="chips">
+          ${RANGOS_FADER.map((r) => `<button class="chip${ajustes.rangoFader === r ? ' on' : ''}"
+            data-mezcla="rango-fader" data-valor="${r}"
+            title="El fader de tempo llega hasta ±${r} %">±${r} %</button>`).join('')}
+        </div>
+      </div>
+
+      ${cascosHtml(cascos)}
     </div>
 
-    <div class="candidatos">
-      <div class="candidatos-cab">
-        <span class="etiqueta">Qué pinchar después</span>
-        <span class="hint">${esc(pistaDeCandidatos(lista))}</span>
-        <span class="candidatos-tools">
-          <input type="search" class="buscar-candidato" data-buscar-candidato
-            placeholder="Buscar en la biblioteca…" value="${esc(busqueda)}" aria-label="Buscar una canción para el plato B">
-          <button class="btn btn-ghost pequeno" data-mezcla="analizar-pendientes"
-            title="Tempo, tonalidad y rejilla de compases">
-            ${ICO.waves}${pendientes ? `Analizar ${pendientes}` : 'Volver a analizar la biblioteca'}</button>
-        </span>
-      </div>
-      <div class="candidatos-lista">${lista.map(candidatoHtml).join('')}</div>
-      ${lista.length ? '' : `<p class="candidatos-vacio">${esc(porQueNoHay())}</p>`}
+  </div>`;
+}
+
+/**
+ * La preescucha, que es lo que separa una cabina de un reproductor.
+ *
+ * Con dos salidas, por los cascos suena el plato que se elija aunque no esté
+ * sonando en la sala, y el mando de mezcla decide cuánto de la sala se mete
+ * encima para poder cuadrar de oído. Sin dos salidas no se ofrece un mando
+ * muerto: se dice lo que hay y se deja la preescucha de siempre, que suena
+ * bajito por donde suena todo.
+ */
+function cascosHtml(cascos) {
+  if (!cascos?.hay) {
+    return `<div class="grupo cascos">
+      <span class="etiqueta">Auriculares</span>
+      <p class="hint">Este equipo no ofrece una segunda salida de sonido. La preescucha
+        suena bajita por la misma salida, con el botón «Preescuchar» del plato B.</p>
+    </div>`;
+  }
+  const boton = (cual, texto) => `<button class="chip${cascos.plato === cual ? ' on' : ''}"
+    data-cascos="plato" data-valor="${cual}" title="Oír el plato ${texto} por los auriculares">${texto}</button>`;
+  return `<div class="grupo cascos">
+    <span class="etiqueta">Auriculares</span>
+    <div class="chips">
+      ${boton('a', 'A')}${boton('b', 'B')}
+      <button class="chip${cascos.plato ? '' : ' on'}" data-cascos="plato" data-valor=""
+        title="Sin preescucha">Ninguno</button>
+      <select class="salida-cascos" data-cascos="salida" aria-label="Salida de los auriculares">
+        <option value="">Elegir salida…</option>
+      </select>
     </div>
+    <label class="mando ancho" title="A la izquierda solo el plato, a la derecha solo la sala">
+      <span>Mezcla · plato ↔ sala</span>
+      <input type="range" data-cascos="mezcla" min="0" max="1" step="0.01" value="${cascos.mezcla}">
+    </label>
+    <label class="mando ancho" title="Volumen de los auriculares, aparte del de la sala">
+      <span>Volumen de los cascos</span>
+      <input type="range" data-cascos="volumen" min="0" max="1.5" step="0.01" value="${cascos.volumen}">
+    </label>
+  </div>`;
+}
+
+/**
+ * Lo primero de la pantalla, porque es lo primero del trabajo.
+ *
+ * El orden de la cabina es el orden real: se prepara, se escucha, se cuadra y
+ * se pincha. Antes «qué pinchar después» estaba debajo del todo, detrás de los
+ * mandos de la transición, o sea al final de una pantalla que empieza por el
+ * paso que va el último.
+ */
+function candidatosHtml(lista, pendientes) {
+  return `<div class="candidatos">
+    <div class="candidatos-cab">
+      <span class="etiqueta">1 · Qué pinchar después</span>
+      <span class="hint">${esc(pistaDeCandidatos(lista))}</span>
+      <span class="candidatos-tools">
+        <input type="search" class="buscar-candidato" data-buscar-candidato
+          placeholder="Buscar en la biblioteca…" value="${esc(busqueda)}" aria-label="Buscar una canción para el plato B">
+        <button class="btn btn-ghost pequeno" data-mezcla="analizar-pendientes"
+          title="Tempo, tonalidad y rejilla de compases">
+          ${ICO.waves}${pendientes ? `Analizar ${pendientes}` : 'Volver a analizar la biblioteca'}</button>
+        <button class="btn btn-ghost pequeno" data-mezcla="rekordbox"
+          title="Traer rejillas y puntos de referencia de tu colección de rekordbox">
+          ${ICO.waves}Importar rekordbox</button>
+      </span>
+    </div>
+    <div class="candidatos-lista">${lista.map(candidatoHtml).join('')}</div>
+    ${lista.length ? '' : `<p class="candidatos-vacio">${esc(porQueNoHay())}</p>`}
   </div>`;
 }
 
@@ -332,7 +531,7 @@ function pintarCuadro(raiz) {
   // Un solo vistazo al estado por cuadro: preguntarlo tres veces sesenta veces
   // por segundo es preparar ciento ochenta planes de mezcla que nadie usa.
   const estado = estadoDeMezcla();
-  const { enCurso } = estado;
+  const { enCurso, bucle } = estado;
 
   const fichas = { a: fichaDelPlato('a', estado), b: fichaDelPlato('b', estado) };
   const enPlato = {
@@ -361,6 +560,18 @@ function pintarCuadro(raiz) {
     const tiempo = estado?.tiempo ?? (cual === 'a' ? activo.tiempo : preparado.tiempo) ?? 0;
     const apagado = cual === 'b' && !enCurso && !preparado.escuchando;
 
+    // Los puntos de referencia, dibujados donde están: un punto que no se ve en
+    // la onda es un número, y lo que hace falta es verlo llegar.
+    const puntos = ficha?.id
+      ? cuesDe(ficha.id).map((c) => ({ segundo: c.segundo, etiqueta: NOMBRES_CUE[c.n - 1] }))
+      : [];
+    const marcas = ficha?.rejilla?.entrada
+      ? [{ segundo: ficha.rejilla.entrada }, ...puntos]
+      : puntos;
+    // El bucle, sombreado: se ve el trozo que se está repitiendo, igual que se
+    // ve la zona de la transición.
+    const zonaBucle = bucle?.cual === cual ? { desde: bucle.desde, hasta: bucle.hasta } : null;
+
     pintarGeneral(general, ondas, {
       mensaje,
       posicion: tiempo,
@@ -370,10 +581,10 @@ function pintarCuadro(raiz) {
       // cuatro lienzos sin ninguna rejilla, y es el primero que se mira.
       rejilla: ficha?.rejilla ?? null,
       // Por dónde empieza a sonar de verdad, que es por donde entrará.
-      marcas: ficha?.rejilla?.entrada ? [{ segundo: ficha.rejilla.entrada }] : [],
-      zona: cual === 'a' && enCurso
+      marcas,
+      zona: zonaBucle ?? (cual === 'a' && enCurso
         ? { desde: enCurso.plan.arranque, hasta: enCurso.plan.arranque + enCurso.plan.duracion }
-        : null,
+        : null),
     });
     pintarZoom(ampliada, ondas, {
       mensaje,
@@ -381,6 +592,8 @@ function pintarCuadro(raiz) {
       segundos: zoom,
       rejilla: ficha?.rejilla ?? null,
       apagado,
+      marcas,
+      zona: zonaBucle,
       sinGraves: (estado?.grave ?? 0) <= -20,
     });
   }
@@ -428,7 +641,9 @@ function pintarDatosDelPlatoA(raiz, ficha, estado) {
   const ajuste = Math.round((estado.velocidad - 1) * 1000) / 10;
   datos.textContent = [
     ficha.bpm ? `${conComa(ficha.bpm * estado.velocidad)} bpm` : 'sin tempo',
-    ficha.tonalidad || ficha.key || 'sin tonalidad',
+    // Con su casilla de la rueda, igual que en la cabecera pintada: este bucle
+    // reescribe la línea sesenta veces por segundo y se la comía.
+    tonoDe(ficha),
     ajuste ? formatPorcentaje(ajuste) : 'a su tempo',
     // Lo que dice de la rejilla también, que si no el bucle se lo comía en el
     // primer cuadro y el aviso solo se veía un instante.

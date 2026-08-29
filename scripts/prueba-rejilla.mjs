@@ -370,12 +370,12 @@ await sleep(600);
 // vivo, la orden llegar y el número cambiar en la ficha del plato.
 const bpmDeB = () => evaluar(`(async () => (await import('./mezclador.js')).platoB()?.ficha?.bpm ?? 0)()`);
 const antesDelDoble = await bpmDeB();
-await evaluar(`document.querySelector('[data-mezcla="octava"][data-valor="2"]')?.click()`);
+await evaluar(`document.querySelector('[data-octava="b"][data-valor="2"]')?.click()`);
 await sleep(900);
 const doble = await bpmDeB();
 comprobar('el botón ×2 de la cabina dobla el tempo del plato B',
   Math.abs(doble - antesDelDoble * 2) < 1, `${antesDelDoble.toFixed(2)} → ${doble.toFixed(2)} bpm`);
-await evaluar(`document.querySelector('[data-mezcla="octava"][data-valor="0.5"]')?.click()`);
+await evaluar(`document.querySelector('[data-octava="b"][data-valor="0.5"]')?.click()`);
 await sleep(900);
 comprobar('y el ÷2 lo devuelve', Math.abs((await bpmDeB()) - antesDelDoble) < 1,
   `${(await bpmDeB()).toFixed(2)} bpm`);
@@ -482,7 +482,7 @@ comprobar('«El uno está aquí» deja el uno donde se ha puesto',
 const antesDeMarcar = await evaluar(`(async () => (await import('./mezclador.js')).platoB()?.ficha?.bpm ?? 0)()`);
 // Pulsando el botón como se pulsa, seis veces a medio segundo: 120.
 for (let i = 0; i < 6; i += 1) {
-  await evaluar(`document.querySelector('[data-mezcla="marcar-tempo"]')?.click()`);
+  await evaluar(`document.querySelector('[data-marcar="b"]')?.click()`);
   await sleep(500);
 }
 await sleep(400);

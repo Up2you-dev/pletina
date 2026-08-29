@@ -732,3 +732,122 @@ describe('análisis y rejilla', () => {
     expect(track.rejilla).toMatchObject({ offset: 0, compasesPorFrase: 16, tiemposPorCompas: 8, entrada: 0 });
   });
 });
+
+describe('puntos de referencia', () => {
+  beforeEach(async () => {
+    await song('a.mp3');
+    await library.scan([musica]);
+  });
+
+  it('se ponen, se cambian y se borran', async () => {
+    const id = library.listTracks()[0].id;
+    library.ponerCue(id, { n: 1, segundo: 12.345, nombre: 'Entrada' });
+    library.ponerCue(id, { n: 3, segundo: 60 });
+    expect(library.listTracks()[0].cues).toEqual([
+      { n: 1, segundo: 12.345, nombre: 'Entrada' },
+      { n: 3, segundo: 60, nombre: '' },
+    ]);
+
+    // Volver a poner el mismo número lo sustituye, no lo duplica.
+    library.ponerCue(id, { n: 1, segundo: 20 });
+    expect(library.listTracks()[0].cues.filter((c) => c.n === 1)).toHaveLength(1);
+
+    library.ponerCue(id, { n: 1, segundo: null });
+    expect(library.listTracks()[0].cues.map((c) => c.n)).toEqual([3]);
+    library.ponerCue(id, { n: 3, segundo: null });
+    expect(library.listTracks()[0].cues).toBe(null);
+  });
+
+  it('fuera de los cuatro pads no se guarda nada', async () => {
+    const id = library.listTracks()[0].id;
+    expect(library.ponerCue(id, { n: 0, segundo: 1 })).toBe(null);
+    expect(library.ponerCue(id, { n: 9, segundo: 1 })).toBe(null);
+    expect(library.ponerCue('no-existe', { n: 1, segundo: 1 })).toBe(null);
+    expect(library.listTracks()[0].cues).toBeFalsy();
+  });
+
+  it('sobreviven a volver a leer el archivo', async () => {
+    const id = library.listTracks()[0].id;
+    library.ponerCue(id, { n: 2, segundo: 30 });
+    // Un reanálisis de la carpeta reconstruye la ficha desde cero; lo que ha
+    // puesto una persona no se puede caer por el camino.
+    await utimes(path.join(musica, 'a.mp3'), new Date(), new Date(Date.now() + 4000));
+    await library.scan([musica]);
+    expect(library.listTracks()[0].cues).toEqual([{ n: 2, segundo: 30, nombre: '' }]);
+  });
+});
+
+describe('el empujón de la rejilla', () => {
+  beforeEach(async () => {
+    await song('a.mp3');
+    await library.scan([musica]);
+  });
+
+  it('mueve el desfase sin tocar el tempo, y da la vuelta por el periodo', () => {
+    const id = library.listTracks()[0].id;
+    library.setAnalysis(id, {
+      bpm: 120,
+      rejilla: {
+        bpm: 120, offset: 0.02, tiempoFuerte: 0, fuerza: 1, tiemposPorCompas: 4, version: 3,
+      },
+    });
+    library.ajustarRejilla(id, { empujon: 0.005 });
+    expect(library.listTracks()[0].rejilla.offset).toBeCloseTo(0.025, 4);
+    expect(library.listTracks()[0].rejilla.bpm).toBeCloseTo(120, 3);
+
+    // Empujando hacia atrás por debajo de cero, la rejilla no desaparece: da la
+    // vuelta por el periodo, que es lo que hace una rejilla.
+    library.ajustarRejilla(id, { empujon: -0.1 });
+    const { offset } = library.listTracks()[0].rejilla;
+    expect(offset).toBeGreaterThan(0);
+    expect(offset).toBeLessThan(0.5);
+  });
+});
+
+describe('importar la colección de rekordbox', () => {
+  it('trae rejilla y puntos a las canciones que encuentra, y cuenta el resto', async () => {
+    const ruta = await song('Cabina.mp3');
+    await library.scan([musica]);
+    const xml = path.join(root, 'coleccion.xml');
+    await writeFile(xml, `<?xml version="1.0"?>
+<DJ_PLAYLISTS Version="1.0.0"><COLLECTION Entries="2">
+  <TRACK Name="Cabina" Artist="X" AverageBpm="124.00" Tonality="Am" TotalTime="200"
+    Location="file://localhost/${encodeURI(ruta.replace(/\\/g, '/')).replace(/^\//, '')}">
+    <TEMPO Inizio="0.500" Bpm="124.00" Metro="4/4" Battito="1"/>
+    <POSITION_MARK Name="Entrada" Type="0" Start="16.0" Num="0"/>
+  </TRACK>
+  <TRACK Name="Fantasma" Artist="Y" AverageBpm="100.00" TotalTime="100"
+    Location="file://localhost/no/existe.mp3"/>
+</COLLECTION></DJ_PLAYLISTS>`);
+
+    const resultado = await library.importarRekordbox(xml);
+    expect(resultado.ok).toBe(true);
+    expect(resultado.leidas).toBe(2);
+    // Lo que no encuentra pareja se cuenta y se dice: callarlo manda a buscar
+    // el problema donde no está.
+    expect(resultado.emparejadas).toBe(1);
+    expect(resultado.sinPareja).toBe(1);
+
+    const track = library.listTracks()[0];
+    expect(track.rejilla.bpm).toBeCloseTo(124, 3);
+    // Puesta a mano: la cuadró una persona, aunque fuera en otro programa, así
+    // que ningún reanálisis la va a pisar.
+    expect(track.rejilla.aMano).toBe(true);
+    expect(track.bpm).toBeCloseTo(124, 3);
+    expect(track.cues).toEqual([{ n: 1, segundo: 16, nombre: 'Entrada' }]);
+    expect(track.key).toBe('Am');
+  });
+
+  it('un archivo que no es una colección se rechaza con su motivo', async () => {
+    const xml = path.join(root, 'otro.xml');
+    await writeFile(xml, '<html><body>hola</body></html>');
+    const resultado = await library.importarRekordbox(xml);
+    expect(resultado.ok).toBe(false);
+    expect(resultado.motivo).toMatch(/rekordbox/);
+  });
+
+  it('y un archivo que no está tampoco tumba nada', async () => {
+    const resultado = await library.importarRekordbox(path.join(root, 'nada.xml'));
+    expect(resultado.ok).toBe(false);
+  });
+});

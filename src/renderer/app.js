@@ -38,17 +38,33 @@ import { analizarPista } from './analisis.js';
 import { analizandoLote, analizarLote, cancelarLote } from './analisis-lote.js';
 import { olvidarOnda } from './ondas.js';
 import {
+  abrirBucle,
+  afinarTempo,
+  bucleActual,
+  ajustarCascos,
   alCambiarMezclador,
+  borrarCue,
   cambiarAjustes,
-  cambiarOctavaEnB,
+  cambiarOctavaEn,
   cargarEnPlatoB,
+  cerrarBucle,
+  cuesDe,
+  elegirSalidaDeCascos,
+  empujarRejilla,
+  igualarTempoEnB,
+  irAlCue,
   marcandoTempo,
-  marcarTempoEnB,
+  marcarTempoEn,
   margenAutomatico,
   mezclarAhora,
+  moverFader,
   platoB,
-  ponerElUnoEnB,
+  platoDe,
+  ponerCue,
+  ponerElUnoEn,
+  salidasDeSonido,
   saltarCompasesEnB,
+  saltarTiemposEn,
   soltarPlatoB,
   terminarMezcla,
 } from './mezclador.js';
@@ -274,6 +290,26 @@ function programarTemporizador(minutos) {
   toast(`La música se parará en ${minutos} minutos`);
 }
 
+/**
+ * Rellena el selector de salida de los auriculares con lo que diga el sistema.
+ *
+ * Se hace aparte del pintado porque es asíncrono y porque la cabina se repinta
+ * sesenta veces por segundo: preguntarle al sistema en cada cuadro sería
+ * absurdo, y dejar el selector vacío, mentira.
+ */
+async function rellenarSalidas() {
+  const selector = document.querySelector('[data-cascos="salida"]');
+  if (!selector) return;
+  const salidas = await salidasDeSonido();
+  if (!selector.isConnected) return;
+  const elegida = state.mezclador.salidaCascos ?? '';
+  selector.innerHTML = ['<option value="">La salida del sistema</option>']
+    .concat(salidas
+      .filter((s) => s.id && s.id !== 'default')
+      .map((s) => `<option value="${esc(s.id)}"${s.id === elegida ? ' selected' : ''}>${esc(s.nombre)}</option>`))
+    .join('');
+}
+
 /* --------------------------------------------------------------- acciones */
 
 async function withPlaylistPrompt(ids) {
@@ -412,6 +448,34 @@ const actions = {
    * serie lo que ya está analizado: volver a analizar mil canciones para
    * cambiar dos es tiempo tirado.
    */
+  /**
+   * Traer el trabajo hecho en rekordbox.
+   *
+   * Quien viene de otro programa trae años de rejillas cuadradas a mano y de
+   * puntos puestos donde entra cada tema. Pedirle que lo repita canción por
+   * canción es pedirle que no use esto.
+   */
+  async importarRekordbox() {
+    const resultado = await api.rekordbox.importar({ rejillas: true, cues: true });
+    if (resultado?.canceled) return;
+    if (!resultado?.ok) {
+      toast(resultado?.motivo ?? 'No he podido leer esa colección.');
+      return;
+    }
+    await refreshLibrary();
+    renderStage();
+    // El recuento entero, incluido lo que no ha entrado: un importador que se
+    // calla lo que no ha importado deja a su dueño buscando donde no está.
+    const partes = [
+      `${plural(resultado.emparejadas, 'canción encontrada', 'canciones encontradas')} de ${resultado.leidas}`,
+      resultado.conRejilla ? `${resultado.conRejilla} con rejilla` : '',
+      resultado.conCues ? `${resultado.conCues} con puntos` : '',
+      resultado.sinPareja ? `${resultado.sinPareja} sin pareja en tu biblioteca` : '',
+      resultado.variables ? `${resultado.variables} tenían rejilla por tramos y aquí solo cabe una` : '',
+    ].filter(Boolean);
+    toast(partes.join(' · '));
+  },
+
   async analizar(ids, { forzar = false, silencio = false } = {}) {
     if (!ids?.length) {
       if (!silencio) toast('No hay nada que analizar.');
@@ -666,6 +730,120 @@ const actions = {
     player.ajustarTira(cual, { [mando]: valor });
   },
 
+  /**
+   * El fader de tempo. Como la tira, no repinta: se está arrastrando el mando y
+   * el mando tiene que quedarse quieto debajo del dedo. Solo se refresca el
+   * número que lo acompaña.
+   */
+  fader(cual, valor) {
+    const puesto = moverFader(cual, valor);
+    const lectura = document.querySelector(`[data-fader-lee="${cual}"]`);
+    if (lectura) {
+      const signo = puesto > 0 ? '+' : puesto < 0 ? '−' : '';
+      lectura.textContent = `${signo}${Math.abs(puesto).toFixed(2).replace('.', ',')} %`;
+    }
+  },
+
+  /** Un punto de referencia: vacío lo pone, puesto lleva el plato, Mayús borra. */
+  cue(cual, n, borrar) {
+    const actual = platoDe(cual);
+    if (!actual?.id) return toast(cual === 'b' ? 'No hay nada preparado en el plato B.' : 'No suena nada.');
+    const puesto = cuesDe(actual.id).some((c) => c.n === n);
+    if (borrar && puesto) return borrarCue(cual, n).then(() => renderStage());
+    if (puesto) return irAlCue(cual, n);
+    return ponerCue(cual, n).then(() => renderStage());
+  },
+
+  /** Un bucle cuadrado de tantos compases. Cero lo cierra. */
+  bucle(cual, compases) {
+    if (!compases) {
+      cerrarBucle();
+      renderStage();
+      return;
+    }
+    const resultado = abrirBucle(cual, compases);
+    if (!resultado.ok) toast(resultado.motivo);
+    else {
+      // El tamaño elegido se recuerda: es el que usa la tecla, y tener que
+      // decirlo dos veces —una con el ratón y otra con el dedo— no tiene sentido.
+      cambiarAjustes({ bucle: compases });
+      persist({ mezclador: state.mezclador });
+    }
+    renderStage();
+  },
+
+  /** El salto por tiempos, del tamaño elegido. */
+  salto(cual, direccion) {
+    saltarTiemposEn(cual, direccion * (state.mezclador.salto || 4));
+  },
+
+  empujonRejilla(cual, milisegundos) {
+    empujarRejilla(cual, milisegundos).then((resultado) => {
+      if (!resultado.ok) toast(resultado.motivo);
+      else renderStage();
+    });
+  },
+
+  afinarTempo(cual, delta) {
+    afinarTempo(cual, delta).then((resultado) => {
+      if (!resultado.ok) toast(resultado.motivo);
+      else renderStage();
+    });
+  },
+
+  octava(cual, factor) {
+    cambiarOctavaEn(cual, factor).then((resultado) => {
+      if (!resultado.ok) toast(resultado.motivo);
+      else {
+        toast(`Ahora se cuenta a ${Math.round(resultado.bpm)} pulsaciones.`);
+        renderStage();
+      }
+    });
+  },
+
+  /**
+   * Marcar el tempo a golpecitos. El botón lleva la cuenta en su propia
+   * etiqueta y no repinta: quien marca da cuatro golpes seguidos y necesita el
+   * botón quieto debajo del dedo.
+   */
+  marcarTempo(cual) {
+    const boton = document.querySelector(`[data-marcar="${cual}"]`);
+    marcarTempoEn(cual).then((resultado) => {
+      if (!resultado.ok) return toast(resultado.motivo);
+      if (boton) {
+        boton.textContent = resultado.bpm
+          ? `${Math.round(resultado.bpm)} bpm · ${resultado.golpes}`
+          : `Marcando… ${resultado.golpes}`;
+      }
+      clearTimeout(esperandoGolpes);
+      esperandoGolpes = setTimeout(() => {
+        if (marcandoTempo()) return;
+        renderStage();
+      }, 2600);
+      return undefined;
+    });
+  },
+
+  /** Los auriculares: qué plato, cuánta sala, cuánto volumen y por dónde salen. */
+  cascos(que, valor) {
+    if (que === 'salida') {
+      elegirSalidaDeCascos(String(valor)).then((hecho) => {
+        if (!hecho) return toast('Este equipo no ha aceptado esa salida para los auriculares.');
+        // Y se recuerda: enchufar los cascos en cada arranque no es un ritual.
+        cambiarAjustes({ salidaCascos: String(valor) });
+        persist({ mezclador: state.mezclador });
+        return undefined;
+      });
+      return;
+    }
+    if (que === 'plato') {
+      ajustarCascos({ plato: valor || null });
+      renderStage();
+      return;
+    }
+    ajustarCascos({ [que]: Number(valor) });
+  },
+
   /** Todo lo que se pulsa en la pantalla del mezclador pasa por aquí. */
   mezclador(que, valor) {
     switch (que) {
@@ -707,13 +885,31 @@ const actions = {
         saltarCompasesEnB(1);
         return;
       case 'poner-uno': {
-        ponerElUnoEnB().then((resultado) => {
+        ponerElUnoEn(valor === 'a' ? 'a' : 'b').then((resultado) => {
           if (!resultado.ok) toast(resultado.motivo);
           else {
             toast('Rejilla corregida: el uno queda donde lo has puesto.');
             renderStage();
           }
         });
+        return;
+      }
+      case 'igualar-b': {
+        const resultado = igualarTempoEnB();
+        toast(resultado.ok
+          ? `Fader del plato B a ${resultado.porcentaje > 0 ? '+' : '−'}${Math.abs(resultado.porcentaje).toFixed(2).replace('.', ',')} %.`
+          : resultado.motivo);
+        renderStage();
+        return;
+      }
+      case 'tamano-salto':
+        cambiarAjustes({ salto: Number(valor) });
+        break;
+      case 'rango-fader':
+        cambiarAjustes({ rangoFader: Number(valor) });
+        break;
+      case 'rekordbox': {
+        actions.importarRekordbox();
         return;
       }
       case 'cortar': {
@@ -724,40 +920,9 @@ const actions = {
         renderStage();
         return;
       }
-      case 'marcar-tempo': {
-        // El botón cuenta los golpes en su propia etiqueta y no repinta la
-        // pantalla en cada uno: quien marca un tempo da cuatro golpes seguidos
-        // y necesita el botón quieto debajo del dedo.
-        const boton = document.querySelector('[data-mezcla="marcar-tempo"]');
-        marcarTempoEnB().then((resultado) => {
-          if (!resultado.ok) return toast(resultado.motivo);
-          // La etiqueta del botón lleva la cuenta y el tempo que va saliendo,
-          // sin repintar nada: el botón tiene que quedarse quieto bajo el dedo.
-          if (boton) {
-            boton.lastChild.textContent = resultado.bpm
-              ? ` ${Math.round(resultado.bpm)} bpm · ${resultado.golpes} golpes`
-              : ` Marcando… ${resultado.golpes}`;
-          }
-          // Y cuando se deja de marcar, la cabina se entera de una vez.
-          clearTimeout(esperandoGolpes);
-          esperandoGolpes = setTimeout(() => {
-            if (marcandoTempo()) return;
-            renderStage();
-          }, 2600);
-          return undefined;
-        });
+      case 'marcar-tempo':
+        actions.marcarTempo('b');
         return;
-      }
-      case 'octava': {
-        cambiarOctavaEnB(Number(valor)).then((resultado) => {
-          if (!resultado.ok) toast(resultado.motivo);
-          else {
-            toast(`Ahora se cuenta a ${Math.round(resultado.bpm)} pulsaciones.`);
-            renderStage();
-          }
-        });
-        return;
-      }
       case 'analizar-pendientes': {
         // Todo lo que le falta a la biblioteca, desde la cabina: sin análisis no
         // hay sugerencias ni rejilla, y descubrirlo teniendo que ir a la
@@ -1397,6 +1562,44 @@ function onKeyDown(event) {
       }
       break;
     }
+    // Los pads del plato que preparas. Con Mayúsculas, el punto se pone donde
+    // esté el plato; sin ellas, el plato se va al punto. Es el gesto de
+    // cualquier cabina y aquí no había manera de hacerlo sin ratón.
+    case '1':
+    case '2':
+    case '3':
+    case '4': {
+      if (state.view.type !== 'mezclador') break;
+      event.preventDefault();
+      actions.cue('b', Number(event.key), false);
+      break;
+    }
+    case '!': case '"': case '·': case '$': case '@': case '#': {
+      // Las teclas de arriba con Mayúsculas cambian de símbolo según el
+      // teclado, así que lo que se mira es el código físico, no el carácter.
+      if (state.view.type !== 'mezclador') break;
+      const fisica = /^Digit([1-4])$/.exec(event.code);
+      if (!fisica) break;
+      event.preventDefault();
+      actions.cue('b', Number(fisica[1]), false);
+      break;
+    }
+    // Abrir y cerrar el bucle del plato preparado, del tamaño elegido.
+    case 'l':
+    case 'L': {
+      if (state.view.type !== 'mezclador') break;
+      const cual = event.key === 'L' ? 'a' : 'b';
+      if (bucleActual()?.cual === cual) actions.bucle(cual, 0);
+      else actions.bucle(cual, state.mezclador.bucle || 4);
+      break;
+    }
+    // Y el fader del plato preparado, al centro.
+    case '0': {
+      if (state.view.type !== 'mezclador') break;
+      actions.fader('b', 0);
+      renderStage();
+      break;
+    }
     case '/':
       event.preventDefault();
       $('#q').focus();
@@ -1474,6 +1677,7 @@ function onCommand(payload) {
       break;
     case 'sleep:set': programarTemporizador(payload?.minutos ?? 0); break;
     case 'focus:search': $('#q').focus(); break;
+    case 'importar:rekordbox': actions.importarRekordbox(); break;
     case 'view:library': actions.navigate({ type: 'library' }); break;
     case 'view:albums': actions.navigate({ type: 'albums' }); break;
     case 'view:artists': actions.navigate({ type: 'artists' }); break;
@@ -1597,6 +1801,10 @@ async function boot() {
   bindRail(railActions);
   bindStage(actions);
   bindCabina(actions);
+  // La lista de salidas de sonido se pide al sistema en cuanto hace falta: no
+  // es constante —se enchufan y se desenchufan auriculares— y sin permiso de
+  // micrófono llega sin nombres, así que se rellena cuando se abre la cabina.
+  rellenarSalidas();
   bindQueue(queueActions);
   bindTransport(transportActions);
   bindDrop();

@@ -1,5 +1,6 @@
 import { $, esc } from './dom.js';
 import { ICO } from './icons.js';
+import { camelot } from '../../shared/camelot.js';
 import { formatTempo, formatTime, plural } from '../../shared/format.js';
 import { getTrack, state } from '../state.js';
 
@@ -43,7 +44,8 @@ const lineaDe = (track) => [
   track.artist,
   formatTime(track.duration),
   formatTempo(track.bpm) ? `${formatTempo(track.bpm)} bpm` : '',
-  track.key || '',
+  // Con su casilla de la rueda: es el dato con el que se decide qué va detrás.
+  camelot(track.key) ? `${camelot(track.key)} · ${track.key}` : (track.key || ''),
 ].filter(Boolean).join(' · ');
 
 const itemHtml = (track, { number, current = false, manualIndex = null }) => {

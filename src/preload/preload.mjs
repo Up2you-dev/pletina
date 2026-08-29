@@ -49,6 +49,8 @@ contextBridge.exposeInMainWorld('pletina', {
     onda: (id) => invoke('tracks:onda', id),
     /** Mueve el «uno» de la rejilla sin tocar el resto del análisis. */
     rejilla: (id, cambio) => invoke('tracks:rejilla', id, cambio),
+    /** Pone o quita un punto de referencia. `segundo: null` lo borra. */
+    cue: (id, cue) => invoke('tracks:cue', id, cue),
     cover: (ids, opciones) => invoke('tracks:cover', ids, opciones),
     coverFromPath: (ids, imagePath, opciones) => invoke('tracks:coverFromPath', ids, imagePath, opciones),
     clearCover: (ids) => invoke('tracks:clearCover', ids),
@@ -64,6 +66,11 @@ contextBridge.exposeInMainWorld('pletina', {
     reorder: (ids) => invoke('playlist:reorder', ids),
     importFile: () => invoke('playlist:import'),
     exportFile: (id) => invoke('playlist:export', id),
+  },
+
+  /** Traer el trabajo hecho en otro programa: rejillas y puntos de referencia. */
+  rekordbox: {
+    importar: (opciones) => invoke('rekordbox:import', opciones),
   },
 
   settings: {

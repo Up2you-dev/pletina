@@ -3,6 +3,7 @@ import { readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isAudioPath, isIgnoredEntry } from '../shared/audio-files.js';
 import { REJILLA_VERSION } from '../shared/beats.js';
+import { CUES_POR_PISTA, emparejar, leerColeccion } from '../shared/rekordbox.js';
 import { readTags } from './metadata.js';
 import * as escritorPorDefecto from './tag-writer.js';
 
@@ -98,6 +99,9 @@ export function createLibrary({ store, covers, escritor = escritorPorDefecto, on
       key: meta.key || previous?.key || '',
       tonalidad: previous?.tonalidad || '',
       rejilla: previous?.rejilla ?? null,
+      // Los puntos de referencia los ha puesto una persona escuchando: releer
+      // el archivo no es motivo para tirarlos.
+      cues: previous?.cues ?? null,
       analisis: previous?.analisis ?? null,
       // Lo que el usuario corrigió a mano gana a lo que diga la etiqueta, y
       // sigue ganando después de volver a leer el archivo.
@@ -476,7 +480,17 @@ export function createLibrary({ store, covers, escritor = escritorPorDefecto, on
         };
       }
       const vieja = track.rejilla;
-      const offset = Number(cambio.offset);
+      // El empujón: mover la rejilla entera unos milisegundos sin tocar el
+      // tempo. Es lo que hace falta cuando el tempo está bien y el «uno» está
+      // cinco milisegundos corrido, que se oye y no se puede arreglar con el
+      // ratón sobre una onda.
+      const empujon = Number(cambio.empujon);
+      const offset = Number.isFinite(empujon) && empujon !== 0 && vieja.bpm > 0
+        ? (() => {
+          const periodo = 60 / vieja.bpm;
+          return (((vieja.offset + empujon) % periodo) + periodo) % periodo;
+        })()
+        : Number(cambio.offset);
       const tiempoFuerte = Number(cambio.tiempoFuerte);
       const compasFuerte = Number(cambio.compasFuerte);
       const factor = Number(cambio.factor);
@@ -538,6 +552,115 @@ export function createLibrary({ store, covers, escritor = escritorPorDefecto, on
       track.bpm = nueva.bpm;
       return track;
     });
+  }
+
+  /**
+   * Los puntos de referencia de una canción.
+   *
+   * Cuatro por canción, numerados. Son de la persona, no del análisis: no los
+   * toca ningún reanálisis y sobreviven a releer el archivo. `segundo` a null
+   * borra el punto, que es lo que hace falta cuando se pone uno donde no era.
+   */
+  function ponerCue(id, { n, segundo, nombre } = {}) {
+    return store.update((d) => {
+      const track = d.tracks[id];
+      if (!track) return null;
+      const numero = Math.round(Number(n));
+      if (!(numero >= 1 && numero <= CUES_POR_PISTA)) return null;
+      const lista = (track.cues ?? []).filter((c) => c && Math.round(Number(c.n)) !== numero);
+      // `Number(null)` es cero, así que preguntar por el número no basta: sin
+      // esto, borrar un punto lo dejaba puesto en el segundo cero.
+      const cuando = segundo === null || segundo === undefined ? NaN : Number(segundo);
+      if (Number.isFinite(cuando) && cuando >= 0) {
+        lista.push({
+          n: numero,
+          segundo: Math.round(cuando * 1000) / 1000,
+          nombre: typeof nombre === 'string' ? nombre.slice(0, 24) : '',
+        });
+      }
+      track.cues = lista.length ? lista.sort((a, b) => a.n - b.n) : null;
+      return track;
+    });
+  }
+
+  /**
+   * Trae la colección de rekordbox: rejillas y puntos de referencia.
+   *
+   * Quien viene de otro programa trae años de trabajo hecho y no se le puede
+   * pedir que lo repita. Lo que entra se marca como puesto a mano —porque lo
+   * está— y por eso ningún reanálisis lo va a pisar después.
+   *
+   * Devuelve el recuento entero, con lo que NO ha entrado. Un importador que se
+   * calla lo que no ha importado deja a su dueño buscando el problema en el
+   * sitio equivocado.
+   */
+  async function importarRekordbox(rutaXml, { rejillas = true, cues = true } = {}) {
+    let texto = '';
+    try {
+      texto = await readFile(rutaXml, 'utf8');
+    } catch {
+      return { ok: false, motivo: 'No he podido leer ese archivo.' };
+    }
+    const { pistas, esRekordbox, truncado } = leerColeccion(texto);
+    if (!esRekordbox) {
+      return { ok: false, motivo: 'Ese archivo no parece una colección de rekordbox.' };
+    }
+    const { parejas, huerfanas } = emparejar(pistas, listTracks());
+
+    let conRejilla = 0;
+    let conCues = 0;
+    let variables = 0;
+    store.update((d) => {
+      for (const { pista, track: encontrada } of parejas) {
+        const track = d.tracks[encontrada.id];
+        if (!track) continue;
+        if (rejillas && pista.rejilla?.bpm > 0) {
+          if (pista.rejilla.variable) variables += 1;
+          track.rejilla = {
+            ...(track.rejilla ?? {}),
+            bpm: pista.rejilla.bpm,
+            offset: pista.rejilla.offset,
+            tiempoFuerte: pista.rejilla.tiempoFuerte,
+            tiemposPorCompas: pista.rejilla.tiemposPorCompas,
+            compasFuerte: track.rejilla?.compasFuerte ?? 0,
+            compasesPorFrase: track.rejilla?.compasesPorFrase ?? 4,
+            fuerza: 1,
+            deriva: 0,
+            fuerzaCompas: track.rejilla?.fuerzaCompas ?? 0,
+            fuerzaFrase: track.rejilla?.fuerzaFrase ?? 0,
+            entrada: track.rejilla?.entrada ?? 0,
+            porBombo: Boolean(track.rejilla?.porBombo),
+            // Puesta a mano: la ha cuadrado una persona, aunque haya sido en
+            // otro programa. Ningún análisis la pisa.
+            aMano: true,
+            version: REJILLA_VERSION,
+          };
+          track.bpm = pista.rejilla.bpm;
+          conRejilla += 1;
+        }
+        if (cues && pista.cues.length) {
+          track.cues = pista.cues.map((c) => ({
+            n: c.n,
+            segundo: c.segundo,
+            nombre: String(c.nombre ?? '').slice(0, 24),
+          }));
+          conCues += 1;
+        }
+        if (pista.tono && !track.key) track.key = pista.tono.slice(0, 8);
+      }
+      return null;
+    });
+
+    return {
+      ok: true,
+      leidas: pistas.length,
+      emparejadas: parejas.length,
+      sinPareja: huerfanas.length,
+      conRejilla,
+      conCues,
+      variables,
+      truncado,
+    };
   }
 
   /** Pone una imagen como carátula. Vive en la caché; al archivo solo si se pide. */
@@ -744,6 +867,8 @@ export function createLibrary({ store, covers, escritor = escritorPorDefecto, on
     editTracks,
     setAnalysis,
     ajustarRejilla,
+    ponerCue,
+    importarRekordbox,
     escribirEnArchivos,
     setCover,
     clearCover,

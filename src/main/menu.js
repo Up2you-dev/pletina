@@ -61,6 +61,7 @@ export function buildMenu({ send, onAddFolder, onAddFiles, onImportPlaylist, onR
         { label: 'Añadir archivos…', accelerator: 'CmdOrCtrl+Shift+O', click: () => onAddFiles() },
         { type: 'separator' },
         { label: 'Importar lista M3U…', click: () => onImportPlaylist() },
+        { label: 'Importar la colección de rekordbox…', click: command('importar:rekordbox') },
         { label: 'Exportar lista actual…', click: command('playlist:export') },
         { type: 'separator' },
         { label: 'Analizar la biblioteca de nuevo', accelerator: 'CmdOrCtrl+Alt+R', click: () => onRescan() },
